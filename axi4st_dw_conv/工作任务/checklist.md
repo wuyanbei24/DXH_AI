@@ -1,0 +1,25 @@
+# Checklist
+
+- [x] 文件名已从 `axaaxi4st_dw_conv.v` 重命名为 `axi4st_dw_conv.v`
+- [x] 模块名与文件名一致：`axi4st_dw_conv`
+- [x] 包含 `timescale 1ns / 1ps` 指令
+- [x] 端口定义与 spec 中的端口参考一致（aclk/aresetn + AXI4-Stream 主从端口）
+- [x] 参数 `IN_DATA_WIDTH` / `OUT_DATA_WIDTH` / `TUSER_WIDTH` / `FIFO_DEPTH` 可配置
+- [x] 比率合法性检查：非 {2,4} 比率报错（initial $error）
+- [x] FSM 采用三段式（状态寄存器 / 次态组合逻辑 / 输出逻辑 分别在独立 always 块）
+- [x] 降位宽：输入 tlast 传播到拆分的最后一个输出子节拍
+- [x] 降位宽：输入 tuser 传播到第一个输出子节拍，其余子节拍 tuser=0
+- [x] 升位宽：累加满 N 拍产出 1 个输出节拍，tkeep 全 1
+- [x] 升位宽：tlast 触发部分字立即冲刷，tkeep 标记有效字节，无效字节填 0
+- [x] 升位宽：输出 tuser 取触发产出的输入节拍 tuser
+- [x] FIFO 使用 `xpm_fifo_sync`（XPM 宏），非手写 FIFO
+- [x] FIFO 配置：READ_MODE="fwft"、FIFO_MEMORY_TYPE="distributed"、WRITE/READ_DATA_WIDTH=COMPOSITE_W
+- [x] FIFO 复位：`.rst(~aresetn)`（高有效，符合 XPM 约定）
+- [x] FIFO 写时钟连接 aclk（单时钟域）
+- [x] 输出 tvalid = !FIFO_empty；输出 rd_en = m_axis_tvalid & m_axis_tready
+- [x] FIFO 满 → FSM 停止产出 → s_axis_tready 拉低（反压链完整）
+- [x] 所有寄存器在 aresetn=0 时异步复位
+- [x] 无组合环路（tvalid/tready 不形成组合反馈）
+- [x] XPM 例化风格与 `src/DXH_AI/AXI4Lite2AXI4ST/axi4lite2axist.v` 一致（参数命名、端口连接顺序）
+- [x] 空输出端口（overflow/underflow/prog_full 等）显式留空
+- [x] 代码注释为中文，与项目其他模块风格一致
