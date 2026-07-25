@@ -300,7 +300,8 @@ OSERDESE2 #(
     .SRVAL_TQ       (1'b0),
     .TBYTE_CTL      ("FALSE"),
     .TBYTE_SRC      ("FALSE"),
-    .TRISTATE_WIDTH (4)            // 【修正】DDR模式UG471强制要求TRISTATE_WIDTH=4
+    // .TRISTATE_WIDTH (4)            // 【修正】DDR模式UG471强制要求TRISTATE_WIDTH=4
+    .TRISTATE_WIDTH (1)            // 【修正】DDR模式UG471强制要求TRISTATE_WIDTH=4
 ) u_oserdes_clk (
     .OQ         (s_clk_out),
     .OFB        (),
