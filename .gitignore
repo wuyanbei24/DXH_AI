@@ -1,0 +1,68 @@
+# Vivado / FPGA 综合产物
+*.jou
+*.log
+*.str
+*.bak
+*.tmp
+*.cache/
+*.hw/
+*.ip_user_files/
+*.runs/
+*.sim/
+*.synth/
+*.impl/
+*.gen/
+*.html
+*.rpt
+*.summary
+*.pb
+*.wdb
+*.wpc
+*.xml
+*.txt
+
+# Vivado 项目文件（按需保留，通常不入库）
+*.xpr
+*.xcix
+*.xci
+*.bd
+*.veo
+*.vho
+
+# 仿真产物
+*.vcd
+*.lso
+*.fsdb
+*.shm/
+*.novas*
+*.work/
+transcript
+vsim.wlf
+xsim.dir/
+xvlog.log
+xelab.log
+xsim.log
+
+# 编辑器/系统文件
+.vscode/
+.idea/
+*.swp
+*~
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# 编译产物
+*.o
+*.a
+*.so
+*.dll
+*.exe
+*.elf
+*.bin
+*.bit
+*.mcs
+
+# 临时文件
+*.tmp
+*.temp
