@@ -5,30 +5,33 @@ module lvds_rx_channel #(
     parameter DELAY_STEPS = 32,
     parameter SAMPLE_CNT  = 16,
     parameter MIN_WIN_SIZE= 4,
-    parameter HEARTBEAT_TIMEOUT_CNT = 16'd50000,
+    parameter HEARTBEAT_TIMEOUT_CNT = 20'd600000,
     parameter MAX_ERR_CNT = 4'd10
 )(
     input  wire rst_n,
-    
+
     // LVDS差分输入
     input  wire lvds_clk_p,
     input  wire lvds_clk_n,
     input  wire lvds_data_p,
     input  wire lvds_data_n,
-    
+
+    // 【修正问题3】IDELAY参考时钟
+    input  wire ref_clk_200m,
+
     // 重训练控制
     input  wire retrain_req,
-    
+
     // 用户数据输出
     output wire clk_div,
     output wire [DATA_WIDTH-1:0] rx_data_out,
     output wire                    rx_data_valid,
-    
+
     // 控制帧输出
     output wire                    ctrl_frame_valid,
     output wire [7:0]             ctrl_frame_type,
     output wire [7:0]             ctrl_frame_payload,
-    
+
     // 状态输出
     output wire phy_ready,
     output wire link_up,
@@ -50,7 +53,8 @@ lvds_rx_phy #(
     .rst_n(rst_n),
     .lvds_clk_p(lvds_clk_p), .lvds_clk_n(lvds_clk_n),
     .lvds_data_p(lvds_data_p), .lvds_data_n(lvds_data_n),
-    .retrain_req(retrain_req),
+    .ref_clk_200m(ref_clk_200m),
+    .retrain_req(retrain_req | retrain_req_inner),  // 外部+内部重训练请求合并
     .rx_data(phy_data), .rx_data_valid(phy_valid),
     .phy_ready(phy_ready), .align_err(align_err),
     .best_delay_val(), .clk_div(clk_div)
@@ -65,6 +69,7 @@ lvds_rx_link #(
     .rx_data_in(phy_data), .rx_data_valid(phy_valid), .phy_ready(phy_ready),
     .rx_data_out(rx_data_out), .rx_data_out_valid(rx_data_valid),
     .retrain_req(retrain_req_inner),
+    .retrain_ack(retrain_req),  // 外部重训练请求作为ack清除内部请求
     .link_up(link_up), .heartbeat_err(heartbeat_err),
     .heartbeat_recv_cnt(),
     .ctrl_frame_valid(ctrl_frame_valid),

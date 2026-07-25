@@ -3,25 +3,25 @@
 module lvds_tx_channel #(
     parameter DATA_WIDTH     = 8,
     parameter SERIAL_FACTOR  = 8,
-    parameter CLK_FREQ       = 100_000_000,
+    parameter CLK_FREQ       = 100_000_000,  // 并行时钟频率
     parameter HEARTBEAT_MS   = 1,
     parameter MAX_PAYLOAD    = 255,
     parameter USER_FIFO_DEPTH= 512
 )(
-    input  wire clk_ref,
+    input  wire clk_ref,       // 外部参考时钟(与并行时钟同频)
     input  wire rst_n,
-    
+
     // 链路管理器控制接口
     input  wire train_en,
     input  wire ctrl_frame_send,
     input  wire [7:0] ctrl_frame_type,
     input  wire [7:0] ctrl_frame_payload,
-    
+
     // 用户数据接口
     input  wire [DATA_WIDTH-1:0] tx_data_in,
     input  wire                    tx_data_valid,
     output wire                    tx_ready,
-    
+
     // LVDS差分输出
     output wire lvds_clk_p,
     output wire lvds_clk_n,
@@ -29,8 +29,11 @@ module lvds_tx_channel #(
     output wire lvds_data_n
 );
 
+// ==================================================
 // 内部信号定义
-localparam TX_IDLE=0, TX_SOF1=1, TX_SOF2=2, TX_TYPE=3, TX_LEN=4, TX_PAYLOAD=5, TX_CHECKSUM=6;
+// ==================================================
+localparam TX_IDLE=0, TX_SOF1=1, TX_SOF2=2, TX_TYPE=3,
+           TX_LEN=4, TX_PAYLOAD=5, TX_CHECKSUM=6;
 reg [2:0] tx_curr_state, tx_next_state;
 reg [7:0] tx_data_mux;
 reg [31:0] heartbeat_timer;
@@ -44,7 +47,6 @@ wire        fifo_empty;
 wire        fifo_full;
 wire [8:0]  fifo_data_cnt;
 
-wire clk_ser, clk_div;
 wire s_data_out, s_clk_out;
 
 localparam FRAME_SOF1=8'hAA, FRAME_SOF2=8'h55;
@@ -52,9 +54,52 @@ localparam TYPE_HB=8'h10, TYPE_USR=8'h20;
 localparam HEARTBEAT_CNT_MAX = (CLK_FREQ / 1000) * HEARTBEAT_MS;
 localparam HEARTBEAT_PAYLOAD_LEN = 8'd2;
 
-assign clk_div = clk_ref;
-assign clk_ser = clk_ref; // 实际工程需MMCM倍频为8倍并行时钟
-assign tx_ready = ~fifo_full && ~train_en && (tx_curr_state == TX_IDLE);
+// ==================================================
+// 【修正问题1】MMCM/PLL 时钟生成
+// DDR + DATA_WIDTH=8 要求 CLK(串行) = 4 × CLKDIV(并行)
+// 100MHz 并行 → 400MHz 串行 → 800Mbps 数据率
+// ==================================================
+wire clk_fb;
+wire clk_div;   // 并行时钟 = clk_ref 频率
+wire clk_ser;   // 串行时钟 = 4 × clk_div
+wire mmcm_locked;
+
+MMCME2_BASE #(
+    .BANDWIDTH          ("OPTIMIZED"),
+    .CLKFBOUT_MULT_F    (8.0),     // VCO = 100MHz × 8 = 800MHz
+    .CLKFBOUT_PHASE     (0.0),
+    .CLKIN1_PERIOD       (10.0),   // 100MHz
+    .CLKOUT0_DIVIDE_F   (2.0),     // 800MHz / 2 = 400MHz (串行)
+    .CLKOUT0_DUTY_CYCLE (0.5),
+    .CLKOUT0_PHASE      (0.0),
+    .CLKOUT1_DIVIDE     (8),       // 800MHz / 8 = 100MHz (并行)
+    .CLKOUT1_DUTY_CYCLE (0.5),
+    .CLKOUT1_PHASE      (0.0),
+    .DIVCLK_DIVIDE      (1),
+    .REF_JITTER1        (0.010),
+    .STARTUP_WAIT       ("FALSE")
+) u_mmcm (
+    .CLKOUT0  (clk_ser),
+    .CLKOUT1  (clk_div),
+    .CLKOUT2  (),
+    .CLKOUT3  (),
+    .CLKOUT4  (),
+    .CLKOUT5  (),
+    .CLKOUT6  (),
+    .CLKFBOUT (clk_fb),
+    .CLKFBIN  (clk_fb),
+    .LOCKED   (mmcm_locked),
+    .CLKIN1   (clk_ref),
+    .PWRDWN   (1'b0),
+    .RST      (~rst_n)
+);
+
+// ==================================================
+// 【修正问题16】tx_ready 门控优化
+// 非训练态且FIFO未满即可写入，发送状态机自行从FIFO读取
+// 带宽利用率从 <1/8 提升至接近 100%
+// ==================================================
+assign tx_ready = ~fifo_full && ~train_en;
 
 // ==================================================
 // XPM_FIFO_SYNC 同步FIFO（首字直通模式）
@@ -83,12 +128,12 @@ xpm_fifo_sync #(
     .din            (tx_data_in),
     .full           (fifo_full),
     .wr_data_count  (fifo_data_cnt),
-    
+
     .rd_en          (fifo_rd_en),
     .dout           (fifo_dout),
     .empty          (fifo_empty),
     .rd_data_count  (),
-    
+
     .prog_empty     (),
     .prog_full      (),
     .data_valid     (),
@@ -102,7 +147,9 @@ xpm_fifo_sync #(
     .dbiterr        ()
 );
 
+// ==================================================
 // 心跳生成逻辑
+// ==================================================
 always @(posedge clk_div or negedge rst_n) begin
     if(!rst_n) begin
         heartbeat_timer <= 32'd0;
@@ -125,7 +172,9 @@ always @(posedge clk_div or negedge rst_n) begin
     end
 end
 
+// ==================================================
 // 帧调度三段式状态机 - 第一段：状态寄存器
+// ==================================================
 always @(posedge clk_div or negedge rst_n) begin
     if(!rst_n) tx_curr_state <= TX_IDLE;
     else tx_curr_state <= tx_next_state;
@@ -182,18 +231,18 @@ always @(posedge clk_div or negedge rst_n) begin
                     payload_len <= HEARTBEAT_PAYLOAD_LEN;
                 end
             end
-            
+
             TX_SOF1: checksum_reg <= FRAME_SOF1;
             TX_SOF2: checksum_reg <= checksum_reg + FRAME_SOF2;
             TX_TYPE: checksum_reg <= checksum_reg + tx_type_sel;
-            
+
             TX_LEN: begin
                 checksum_reg <= checksum_reg + payload_len;
                 if(payload_len != 8'd0 && tx_type_sel == TYPE_USR) begin
                     fifo_rd_en <= 1'b1;
                 end
             end
-            
+
             TX_PAYLOAD: begin
                 payload_cnt <= payload_cnt + 1'b1;
                 case(tx_type_sel)
@@ -209,13 +258,15 @@ always @(posedge clk_div or negedge rst_n) begin
                     end
                 endcase
             end
-            
+
             default: ;
         endcase
     end
 end
 
+// ==================================================
 // 发送数据多路选择
+// ==================================================
 always @(*) begin
     if(train_en) begin
         tx_data_mux = 8'h55;
@@ -238,14 +289,27 @@ always @(*) begin
     end
 end
 
+// ==================================================
 // OSERDESE2 数据通道串行化
+// ==================================================
 OSERDESE2 #(
     .DATA_RATE_OQ   ("DDR"),
+    .DATA_RATE_TQ   ("DDR"),       // DDR模式TQ速率
     .DATA_WIDTH     (DATA_WIDTH),
+    .INIT_OQ        (1'b0),
+    .INIT_TQ        (1'b0),
     .SERDES_MODE    ("MASTER"),
-    .TRISTATE_WIDTH (1)
+    .SRVAL_OQ       (1'b0),
+    .SRVAL_TQ       (1'b0),
+    .TBYTE_CTL      ("FALSE"),
+    .TBYTE_SRC      ("FALSE"),
+    .TRISTATE_WIDTH (4)            // 【修正】DDR模式UG471强制要求TRISTATE_WIDTH=4
 ) u_oserdes_data (
     .OQ         (s_data_out),
+    .OFB        (),                // 内部反馈，直出IO时悬空
+    .SHIFTOUT1  (), .SHIFTOUT2  (),// 无SLAVE级联，悬空
+    .TBYTEOUT   (), .TFB         (),
+    .TQ         (),                // 三态输出未使用
     .CLK        (clk_ser),
     .CLKDIV     (clk_div),
     .D1         (tx_data_mux[0]), .D2(tx_data_mux[1]), .D3(tx_data_mux[2]), .D4(tx_data_mux[3]),
@@ -257,14 +321,25 @@ OSERDESE2 #(
     .TBYTEIN    (1'b0), .TCE(1'b0)
 );
 
-// OSERDESE2 时钟通道串行化
+// OSERDESE2 时钟通道串行化（输出 10101010 模式）
 OSERDESE2 #(
     .DATA_RATE_OQ   ("DDR"),
+    .DATA_RATE_TQ   ("DDR"),       // DDR模式TQ速率
     .DATA_WIDTH     (DATA_WIDTH),
+    .INIT_OQ        (1'b0),
+    .INIT_TQ        (1'b0),
     .SERDES_MODE    ("MASTER"),
-    .TRISTATE_WIDTH (1)
+    .SRVAL_OQ       (1'b0),
+    .SRVAL_TQ       (1'b0),
+    .TBYTE_CTL      ("FALSE"),
+    .TBYTE_SRC      ("FALSE"),
+    .TRISTATE_WIDTH (4)            // 【修正】DDR模式UG471强制要求TRISTATE_WIDTH=4
 ) u_oserdes_clk (
     .OQ         (s_clk_out),
+    .OFB        (),
+    .SHIFTOUT1  (), .SHIFTOUT2  (),
+    .TBYTEOUT   (), .TFB         (),
+    .TQ         (),
     .CLK        (clk_ser),
     .CLKDIV     (clk_div),
     .D1(1'b1), .D2(1'b0), .D3(1'b1), .D4(1'b0), .D5(1'b1), .D6(1'b0), .D7(1'b1), .D8(1'b0),
