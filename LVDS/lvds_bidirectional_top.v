@@ -9,6 +9,10 @@ module lvds_bidirectional_top #(
     // 【修正问题3】IDELAY参考时钟（200MHz）
     input  wire ref_clk_200m,
     input  wire rst_n,
+    input  wire clk_ser,   // 串行时钟 = 400MHz
+    input  wire clk_div,   // 并行时钟 = 100MHz
+
+
 
     // 发送方向：本端→对端
     output wire tx_lvds_clk_p, output wire tx_lvds_clk_n,
@@ -51,11 +55,20 @@ wire user_rx_en;
 // 【修正问题7】内部wire接收原始valid信号，再用assign门控
 wire rx_valid_raw;
 
+// ==================================================
+// MMCM 时钟生成（从 tx_channel 移至顶层）
+// DDR + DATA_WIDTH=8 要求 CLK(串行) = 4 × CLKDIV(并行)
+// 100MHz 并行 → 400MHz 串行 → 800Mbps 数据率
+// ==================================================
+
+// wire clk_ser;   // 串行时钟 = 400MHz
+// wire clk_div;   // 并行时钟 = 100MHz
+
 // 发送通道
 lvds_tx_channel #(
     .DATA_WIDTH(DATA_WIDTH), .CLK_FREQ(CLK_FREQ)
 ) u_tx (
-    .clk_ref(clk_ref), .rst_n(rst_n),
+    .clk_ser(clk_ser), .clk_div(clk_div), .rst_n(rst_n),
     .train_en(tx_train_en),
     .ctrl_frame_send(ctrl_frame_send),
     .ctrl_frame_type(ctrl_frame_type_out),

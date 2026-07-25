@@ -8,7 +8,8 @@ module lvds_tx_channel #(
     parameter MAX_PAYLOAD    = 255,
     parameter USER_FIFO_DEPTH= 512
 )(
-    input  wire clk_ref,       // 外部参考时钟(与并行时钟同频)
+    input  wire clk_ser,       // 串行时钟（从顶层输入）
+    input  wire clk_div,       // 并行时钟（从顶层输入）
     input  wire rst_n,
 
     // 链路管理器控制接口
@@ -55,44 +56,10 @@ localparam HEARTBEAT_CNT_MAX = (CLK_FREQ / 1000) * HEARTBEAT_MS;
 localparam HEARTBEAT_PAYLOAD_LEN = 8'd2;
 
 // ==================================================
-// 【修正问题1】MMCM/PLL 时钟生成
+// clk_ser / clk_div 由顶层 MMCM 生成并输入
 // DDR + DATA_WIDTH=8 要求 CLK(串行) = 4 × CLKDIV(并行)
 // 100MHz 并行 → 400MHz 串行 → 800Mbps 数据率
 // ==================================================
-wire clk_fb;
-wire clk_div;   // 并行时钟 = clk_ref 频率
-wire clk_ser;   // 串行时钟 = 4 × clk_div
-wire mmcm_locked;
-
-MMCME2_BASE #(
-    .BANDWIDTH          ("OPTIMIZED"),
-    .CLKFBOUT_MULT_F    (8.0),     // VCO = 100MHz × 8 = 800MHz
-    .CLKFBOUT_PHASE     (0.0),
-    .CLKIN1_PERIOD       (10.0),   // 100MHz
-    .CLKOUT0_DIVIDE_F   (2.0),     // 800MHz / 2 = 400MHz (串行)
-    .CLKOUT0_DUTY_CYCLE (0.5),
-    .CLKOUT0_PHASE      (0.0),
-    .CLKOUT1_DIVIDE     (8),       // 800MHz / 8 = 100MHz (并行)
-    .CLKOUT1_DUTY_CYCLE (0.5),
-    .CLKOUT1_PHASE      (0.0),
-    .DIVCLK_DIVIDE      (1),
-    .REF_JITTER1        (0.010),
-    .STARTUP_WAIT       ("FALSE")
-) u_mmcm (
-    .CLKOUT0  (clk_ser),
-    .CLKOUT1  (clk_div),
-    .CLKOUT2  (),
-    .CLKOUT3  (),
-    .CLKOUT4  (),
-    .CLKOUT5  (),
-    .CLKOUT6  (),
-    .CLKFBOUT (clk_fb),
-    .CLKFBIN  (clk_fb),
-    .LOCKED   (mmcm_locked),
-    .CLKIN1   (clk_ref),
-    .PWRDWN   (1'b0),
-    .RST      (~rst_n)
-);
 
 // ==================================================
 // 【修正问题16】tx_ready 门控优化
