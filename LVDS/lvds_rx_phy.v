@@ -83,9 +83,8 @@ reg         bitslip_req;
 reg         bitslip_wait;       // BITSLIP后稳定等待计数器
 reg  [7:0] align_check_cnt;
 reg  [15:0] lock_timer;
-// 【修正问题5】retry_cnt递增逻辑修正
+// 重试计数器（单一驱动源，见下方专用always块）
 reg  [1:0]  retry_cnt;
-reg         retry_inc;           // 重试递增脉冲（每次进入M_DELAY_SCAN时产生一拍）
 localparam MAX_RETRY = 2'd3;
 
 // 【修正问题14】锁定检查多次采样投票
@@ -102,12 +101,13 @@ IBUFDS #(.DIFF_TERM("TRUE"), .IOSTANDARD("LVDS_25")) u_ibufds_clk (
 );
 
 // ==================================================
-// 【修正问题3】IDELAYCTRL 原语 — IDELAYE2正常工作必须
+// IDELAYCTRL 原语 — IDELAYE2正常工作必须
 // ==================================================
+wire idelay_rdy;
 IDELAYCTRL u_idelayctrl (
     .REFCLK (ref_clk_200m),
     .RST    (~rst_n),
-    .RDY    ()
+    .RDY    (idelay_rdy)
 );
 
 // IDELAYE2 输入延迟单元
@@ -190,7 +190,7 @@ end
 always @(*) begin
     m_next_state = m_curr_state;
     case(m_curr_state)
-        M_IDLE:       m_next_state = M_DELAY_SCAN;
+        M_IDLE:       if(idelay_rdy) m_next_state = M_DELAY_SCAN;  // 等待IDELAYCTRL就绪
         M_DELAY_SCAN: if(scan_done) m_next_state = (|best_delay_val) ? M_BIT_ALIGN : M_FAULT;
         M_BIT_ALIGN:  m_next_state = M_WORD_ALIGN;
         M_WORD_ALIGN: if(align_check_cnt >= 8'd16) m_next_state = M_LOCK_CHECK;
@@ -209,8 +209,6 @@ always @(posedge clk_div or negedge rst_n) begin
         align_err <= 1'b0;
         scan_start <= 1'b0;
         lock_timer <= 16'd0;
-        retry_cnt <= 2'd0;
-        retry_inc <= 1'b0;
         align_check_cnt <= 8'd0;
         bitslip_req <= 1'b0;
         bitslip_cnt <= 4'd0;
@@ -219,7 +217,6 @@ always @(posedge clk_div or negedge rst_n) begin
     end else begin
         // 【修正问题13】BITSLIP单周期脉冲：默认拉低
         bitslip_req <= 1'b0;
-        retry_inc <= 1'b0;
 
         case(m_curr_state)
             M_IDLE: begin
@@ -232,12 +229,8 @@ always @(posedge clk_div or negedge rst_n) begin
                 bitslip_wait <= 1'b0;
                 lock_match_cnt <= 8'd0;
             end
-            // 【修正问题5】retry_cnt仅在进入M_DELAY_SCAN时递增一次
             M_DELAY_SCAN: begin
                 scan_start <= 1'b0;
-                if(m_curr_state != m_next_state) begin
-                    // 状态即将离开，不递增
-                end
             end
             M_BIT_ALIGN: begin
                 bitslip_cnt <= 4'd0;
@@ -281,7 +274,6 @@ always @(posedge clk_div or negedge rst_n) begin
             M_NORMAL: begin
                 phy_ready <= 1'b1;
                 align_err <= 1'b0;
-                retry_cnt <= 2'd0;
             end
             M_FAULT: begin
                 phy_ready <= 1'b0;
@@ -292,14 +284,17 @@ always @(posedge clk_div or negedge rst_n) begin
     end
 end
 
-// 【修正问题5】retry_cnt递增：在M_IDLE→M_DELAY_SCAN跳转时递增一次
+// ==================================================
+// 重试计数器（单一驱动源）
+// 在M_IDLE→M_DELAY_SCAN跳转时递增，复位或成功链接时清零
+// ==================================================
 always @(posedge clk_div or negedge rst_n) begin
     if(!rst_n)
         retry_cnt <= 2'd0;
-    else if(m_curr_state == M_IDLE && m_next_state == M_DELAY_SCAN)
-        retry_cnt <= retry_cnt + 1'b1;
     else if(m_curr_state == M_NORMAL)
         retry_cnt <= 2'd0;
+    else if(m_curr_state == M_IDLE && m_next_state == M_DELAY_SCAN)
+        retry_cnt <= retry_cnt + 1'b1;
 end
 
 // ==================================================

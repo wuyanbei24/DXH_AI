@@ -118,35 +118,71 @@ always @(posedge clk or negedge rst_n) begin
         retrain_req <= 1'b0;
         link_up <= 1'b0;
         heartbeat_err <= 1'b0;
-    end else if(rx_data_valid) begin
-        rx_data_out_valid <= 1'b0;
-        ctrl_frame_valid <= 1'b0;
-        heartbeat_timer <= heartbeat_timer + 1'b1;
+    end else begin
+        // 【修正问题10】retrain_req电平清除：上游确认后清除（优先级最高）
+        if(retrain_ack) retrain_req <= 1'b0;
 
-        case(f_curr_state)
-            F_IDLE: begin
-                checksum_calc <= rx_data_in;
-                payload_cnt <= 8'd0;
-            end
+        if(rx_data_valid) begin
+            rx_data_out_valid <= 1'b0;
+            ctrl_frame_valid <= 1'b0;
+            heartbeat_timer <= heartbeat_timer + 1'b1;
 
-            F_SOF1: checksum_calc <= checksum_calc + rx_data_in;
+            case(f_curr_state)
+                F_IDLE: begin
+                    checksum_calc <= rx_data_in;
+                    payload_cnt <= 8'd0;
+                end
 
-            F_SOF2: begin
-                frame_type <= rx_data_in;
-                checksum_calc <= checksum_calc + rx_data_in;
-            end
+                F_SOF1: checksum_calc <= checksum_calc + rx_data_in;
 
-            F_TYPE: begin
-                frame_len <= rx_data_in;
-                checksum_calc <= checksum_calc + rx_data_in;
-                payload_cnt <= 8'd0;
-            end
+                F_SOF2: begin
+                    frame_type <= rx_data_in;
+                    checksum_calc <= checksum_calc + rx_data_in;
+                end
 
-            // 【修正问题11】frame_len=0时，F_LEN状态的rx_data_in就是Checksum字节
-            // 但状态机此时跳转到F_CHECKSUM，F_CHECKSUM消费的是下一字节
-            // 因此frame_len=0时需要在F_LEN状态直接比对Checksum
-            F_LEN: begin
-                if(frame_len != 8'd0) begin
+                F_TYPE: begin
+                    frame_len <= rx_data_in;
+                    checksum_calc <= checksum_calc + rx_data_in;
+                    payload_cnt <= 8'd0;
+                end
+
+                // 【修正问题11】frame_len=0时，F_LEN状态的rx_data_in就是Checksum字节
+                // 但状态机此时跳转到F_CHECKSUM，F_CHECKSUM消费的是下一字节
+                // 因此frame_len=0时需要在F_LEN状态直接比对Checksum
+                F_LEN: begin
+                    if(frame_len != 8'd0) begin
+                        payload_cnt <= payload_cnt + 1'b1;
+                        checksum_calc <= checksum_calc + rx_data_in;
+
+                        case(frame_type)
+                            TYPE_USR: begin
+                                rx_data_out <= rx_data_in;
+                                rx_data_out_valid <= 1'b1;
+                            end
+                            TYPE_HB: begin
+                                if(payload_cnt == 8'd0) heartbeat_recv_cnt[15:8] <= rx_data_in;
+                                else heartbeat_recv_cnt[7:0] <= rx_data_in;
+                            end
+                            default: begin
+                                ctrl_frame_payload <= rx_data_in;
+                            end
+                        endcase
+                    end else begin
+                        // frame_len==0: 当前rx_data_in是Checksum字节，直接比对
+                        if(rx_data_in == checksum_calc) begin
+                            frame_err_cnt <= 4'd0;
+                            // 控制帧输出（无payload的控制帧）
+                            if(frame_type != TYPE_HB && frame_type != TYPE_USR) begin
+                                ctrl_frame_valid <= 1'b1;
+                                ctrl_frame_type <= frame_type;
+                            end
+                        end else begin
+                            frame_err_cnt <= frame_err_cnt + 1'b1;
+                        end
+                    end
+                end
+
+                F_PAYLOAD: begin
                     payload_cnt <= payload_cnt + 1'b1;
                     checksum_calc <= checksum_calc + rx_data_in;
 
@@ -163,83 +199,49 @@ always @(posedge clk or negedge rst_n) begin
                             ctrl_frame_payload <= rx_data_in;
                         end
                     endcase
-                end else begin
-                    // frame_len==0: 当前rx_data_in是Checksum字节，直接比对
+                end
+
+                // 【修正问题18】F_CHECKSUM合并了原F_DONE的功能
+                F_CHECKSUM: begin
                     if(rx_data_in == checksum_calc) begin
                         frame_err_cnt <= 4'd0;
-                        // 控制帧输出（无payload的控制帧）
+                        if(frame_type == TYPE_HB) begin
+                            heartbeat_timer <= 20'd0;
+                            heartbeat_miss_cnt <= 4'd0;
+                            heartbeat_err <= 1'b0;
+                            link_up <= 1'b1;
+                        end
+                        // 控制帧输出脉冲
                         if(frame_type != TYPE_HB && frame_type != TYPE_USR) begin
                             ctrl_frame_valid <= 1'b1;
                             ctrl_frame_type <= frame_type;
                         end
                     end else begin
+                        // 【修正问题17】连续错误计数，中间一次正确即清零
                         frame_err_cnt <= frame_err_cnt + 1'b1;
                     end
+                    // 【修正问题17】连续10帧校验错误触发重训练
+                    if(frame_err_cnt >= MAX_ERR_CNT) begin
+                        // 【修正问题10】retrain_req置为电平信号，持续拉高
+                        retrain_req <= 1'b1;
+                    end
                 end
-            end
 
-            F_PAYLOAD: begin
-                payload_cnt <= payload_cnt + 1'b1;
-                checksum_calc <= checksum_calc + rx_data_in;
+                default: ;
+            endcase
 
-                case(frame_type)
-                    TYPE_USR: begin
-                        rx_data_out <= rx_data_in;
-                        rx_data_out_valid <= 1'b1;
-                    end
-                    TYPE_HB: begin
-                        if(payload_cnt == 8'd0) heartbeat_recv_cnt[15:8] <= rx_data_in;
-                        else heartbeat_recv_cnt[7:0] <= rx_data_in;
-                    end
-                    default: begin
-                        ctrl_frame_payload <= rx_data_in;
-                    end
-                endcase
-            end
-
-            // 【修正问题18】F_CHECKSUM合并了原F_DONE的功能
-            F_CHECKSUM: begin
-                if(rx_data_in == checksum_calc) begin
-                    frame_err_cnt <= 4'd0;
-                    if(frame_type == TYPE_HB) begin
-                        heartbeat_timer <= 20'd0;
-                        heartbeat_miss_cnt <= 4'd0;
-                        heartbeat_err <= 1'b0;
-                        link_up <= 1'b1;
-                    end
-                    // 控制帧输出脉冲
-                    if(frame_type != TYPE_HB && frame_type != TYPE_USR) begin
-                        ctrl_frame_valid <= 1'b1;
-                        ctrl_frame_type <= frame_type;
-                    end
-                end else begin
-                    // 【修正问题17】连续错误计数，中间一次正确即清零
-                    frame_err_cnt <= frame_err_cnt + 1'b1;
-                end
-                // 【修正问题17】连续10帧校验错误触发重训练
-                if(frame_err_cnt >= MAX_ERR_CNT) begin
-                    // 【修正问题10】retrain_req置为电平信号，持续拉高
+            // 【修正问题15】心跳超时检测（超时阈值=6倍心跳周期）
+            if(heartbeat_timer >= HEARTBEAT_TIMEOUT_CNT) begin
+                heartbeat_timer <= 20'd0;
+                heartbeat_miss_cnt <= heartbeat_miss_cnt + 1'b1;
+                if(heartbeat_miss_cnt >= 4'd5) begin
+                    heartbeat_err <= 1'b1;
+                    // 【修正问题10】retrain_req电平信号
                     retrain_req <= 1'b1;
                 end
             end
-
-            default: ;
-        endcase
-
-        // 【修正问题15】心跳超时检测（超时阈值=6倍心跳周期）
-        if(heartbeat_timer >= HEARTBEAT_TIMEOUT_CNT) begin
-            heartbeat_timer <= 20'd0;
-            heartbeat_miss_cnt <= heartbeat_miss_cnt + 1'b1;
-            if(heartbeat_miss_cnt >= 4'd5) begin
-                heartbeat_err <= 1'b1;
-                // 【修正问题10】retrain_req电平信号
-                retrain_req <= 1'b1;
-            end
         end
     end
-
-    // 【修正问题10】retrain_req电平清除：上游确认后清除
-    if(retrain_ack) retrain_req <= 1'b0;
 end
 
 endmodule

@@ -83,7 +83,7 @@ xpm_fifo_sync #(
     .RD_DATA_COUNT_WIDTH (9),
     .READ_DATA_WIDTH     (DATA_WIDTH),
     .READ_MODE           ("fwft"),
-    .SIM_ASSERT_CHK      (0),
+    // .SIM_ASSERT_CHK      (0),
     .USE_ADV_FEATURES    ("0000"),
     .WAKEUP_TIME         (0),
     .WRITE_DATA_WIDTH    (DATA_WIDTH),
