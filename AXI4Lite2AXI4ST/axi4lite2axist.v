@@ -21,13 +21,13 @@
 //   写命令帧（5拍）: HEAD | AWADDR | WDATA | {WSTRB} | TAIL
 //   读命令帧（3拍）: HEAD | ARADDR | TAIL
 //   写响应帧（3拍）: HEAD | {BRESP} | TAIL
-//   读响应帧（3拍）: HEAD | RDATA  | TAIL
+//   读响应帧（4拍）: HEAD | RDATA | {RRESP} | TAIL
 //============================================================================
 module axi4lite2axist #(
     parameter C_S_AXI_DATA_WIDTH = 32,
     parameter C_S_AXI_ADDR_WIDTH = 32,
     parameter C_AXIS_DATA_WIDTH  = 32,
-    parameter C_FIFO_DEPTH       = 4   // AW/W/WRQ/RDQ/BRSP/RRSP FIFO 深度（须为 2 的幂）
+    parameter C_FIFO_DEPTH       = 16  // AW/W/WRQ/RDQ/BRSP/RRSP FIFO 深度（须为 2 的幂，最小 16）
 )(
     input  wire                                 aclk,
     input  wire                                 aresetn,
@@ -68,7 +68,7 @@ module axi4lite2axist #(
     input  wire [C_AXIS_DATA_WIDTH-1:0]         s_axis_rsp_tdata,
     input  wire                                 s_axis_rsp_tvalid,
     input  wire                                 s_axis_rsp_tlast,
-    output reg                                  s_axis_rsp_tready
+    output wire                                 s_axis_rsp_tready
 );
 
     // ========== 帧格式常量 ==========
@@ -84,14 +84,14 @@ module axi4lite2axist #(
     // W  FIFO:  {wdata[31:0], wstrb[3:0]}   = 36 bit
     // WRQ FIFO: {addr[31:0], data[31:0], strb[3:0]} = 68 bit
     // RDQ FIFO: {addr[31:0]}                = 32 bit
-    // BRSP FIFO:{bresp[1:0]}                = 2 bit
-    // RRSP FIFO:{rdata[31:0]}               = 32 bit
+    // BRSP FIFO:{bresp[1:0]}                      = 2 bit
+    // RRSP FIFO:{rdata[31:0], rresp[1:0]}          = 34 bit
     localparam AW_FIFO_W   = C_S_AXI_ADDR_WIDTH + 3;                          // 35
     localparam W_FIFO_W    = C_S_AXI_DATA_WIDTH + C_S_AXI_DATA_WIDTH/8;       // 36
     localparam WRQ_FIFO_W  = C_S_AXI_ADDR_WIDTH + C_S_AXI_DATA_WIDTH + C_S_AXI_DATA_WIDTH/8; // 68
     localparam RDQ_FIFO_W  = C_S_AXI_ADDR_WIDTH;                              // 32
     localparam BRSP_FIFO_W = 2;                                               // 2
-    localparam RRSP_FIFO_W = C_S_AXI_DATA_WIDTH;                              // 32
+    localparam RRSP_FIFO_W = C_S_AXI_DATA_WIDTH + 2;                          // 34
 
     // XPM FIFO 复位（active-high）
     wire fifo_rst = ~aresetn;
@@ -117,9 +117,7 @@ module axi4lite2axist #(
         .READ_MODE           ("fwft"),
         .USE_ADV_FEATURES    ("0000"),
         .WR_DATA_COUNT_WIDTH (1),
-        .FULL_RESET_VALUE    (0),
-        .CASCADE_HEIGHT      (0),
-        .SIM_ASSERT_ON       (1)
+        .FULL_RESET_VALUE    (0)
     ) u_aw_fifo (
         .rst              (fifo_rst),
         .wr_clk           (aclk),
@@ -166,9 +164,7 @@ module axi4lite2axist #(
         .READ_MODE           ("fwft"),
         .USE_ADV_FEATURES    ("0000"),
         .WR_DATA_COUNT_WIDTH (1),
-        .FULL_RESET_VALUE    (0),
-        .CASCADE_HEIGHT      (0),
-        .SIM_ASSERT_ON       (1)
+        .FULL_RESET_VALUE    (0)
     ) u_w_fifo (
         .rst              (fifo_rst),
         .wr_clk           (aclk),
@@ -217,9 +213,7 @@ module axi4lite2axist #(
         .READ_MODE           ("fwft"),
         .USE_ADV_FEATURES    ("0000"),
         .WR_DATA_COUNT_WIDTH (1),
-        .FULL_RESET_VALUE    (0),
-        .CASCADE_HEIGHT      (0),
-        .SIM_ASSERT_ON       (1)
+        .FULL_RESET_VALUE    (0)
     ) u_wrq_fifo (
         .rst              (fifo_rst),
         .wr_clk           (aclk),
@@ -266,9 +260,7 @@ module axi4lite2axist #(
         .READ_MODE           ("fwft"),
         .USE_ADV_FEATURES    ("0000"),
         .WR_DATA_COUNT_WIDTH (1),
-        .FULL_RESET_VALUE    (0),
-        .CASCADE_HEIGHT      (0),
-        .SIM_ASSERT_ON       (1)
+        .FULL_RESET_VALUE    (0)
     ) u_rdq_fifo (
         .rst              (fifo_rst),
         .wr_clk           (aclk),
@@ -314,9 +306,7 @@ module axi4lite2axist #(
         .READ_MODE           ("fwft"),
         .USE_ADV_FEATURES    ("0000"),
         .WR_DATA_COUNT_WIDTH (1),
-        .FULL_RESET_VALUE    (0),
-        .CASCADE_HEIGHT      (0),
-        .SIM_ASSERT_ON       (1)
+        .FULL_RESET_VALUE    (0)
     ) u_brsp_fifo (
         .rst              (fifo_rst),
         .wr_clk           (aclk),
@@ -350,7 +340,7 @@ module axi4lite2axist #(
     wire                   rrsp_wr_en, rrsp_rd_en;
 
     assign rrsp_wr_en = rx_push_r && !rrsp_full;
-    assign rrsp_din   = rx_push_rdata;
+    assign rrsp_din   = {rx_push_rdata, rx_push_rresp};
     assign rrsp_rd_en = (!s_axi_rvalid || (s_axi_rvalid && s_axi_rready)) && !rrsp_empty;
 
     xpm_fifo_sync #(
@@ -362,9 +352,7 @@ module axi4lite2axist #(
         .READ_MODE           ("fwft"),
         .USE_ADV_FEATURES    ("0000"),
         .WR_DATA_COUNT_WIDTH (1),
-        .FULL_RESET_VALUE    (0),
-        .CASCADE_HEIGHT      (0),
-        .SIM_ASSERT_ON       (1)
+        .FULL_RESET_VALUE    (0)
     ) u_rrsp_fifo (
         .rst              (fifo_rst),
         .wr_clk           (aclk),
@@ -549,12 +537,12 @@ module axi4lite2axist #(
 
     //=====================================================================
     // RX 状态机：接收响应帧，按帧类型分发到 BRSP/RRSP FIFO
-    //   修正 D-01/D-02：等待响应期间无条件 tready=1，在 RX_HEAD 锁存类型
+    //   修正 C-02：合并 RX_WAIT_HEAD + RX_WAIT_TYPE，同拍校验魔数并锁存类型
+    //   修正 D-01/D-02：等待响应期间无条件 tready=1
     //=====================================================================
     localparam [1:0] RX_WAIT_HEAD = 2'd0,
-                     RX_WAIT_TYPE = 2'd1,
-                     RX_PAYLOAD   = 2'd2,
-                     RX_WAIT_TAIL = 2'd3;
+                     RX_PAYLOAD   = 2'd1,
+                     RX_WAIT_TAIL = 2'd2;
 
     reg [1:0]  rx_state, rx_next_state;
     reg [7:0]  rx_type;
@@ -562,14 +550,15 @@ module axi4lite2axist #(
     reg [1:0]  rx_cnt;
     reg [1:0]  rx_bresp_tmp;
     reg [31:0] rx_rdata_tmp;
+    reg [1:0]  rx_rresp_tmp;   // 修正 M-04：读响应 RRESP 缓存
 
     reg        rx_push_b;
     reg [1:0]  rx_push_bresp;
     reg        rx_push_r;
     reg [31:0] rx_push_rdata;
+    reg [1:0]  rx_push_rresp;  // 修正 M-04：读响应 RRESP 推送
 
     // 修正 D-01：仅在 RX_WAIT_TAIL 且目标 FIFO 满时才反压
-    // 其余状态无条件接收，避免死锁
     wire rx_tail_block = (rx_state == RX_WAIT_TAIL) &&
                          ( ((rx_type == FRAME_TYPE_WR_RSP) && brsp_full) ||
                            ((rx_type == FRAME_TYPE_RD_RSP) && rrsp_full) );
@@ -583,21 +572,16 @@ module axi4lite2axist #(
         else          rx_state <= rx_next_state;
     end
 
-    // 第二段：次态逻辑
+    // 第二段：次态逻辑（修正 C-02：合并状态，同拍校验魔数+类型）
     always @(*) begin
         rx_next_state = rx_state;
         case (rx_state)
             RX_WAIT_HEAD: begin
-                if (s_hs && (s_axis_rsp_tdata[31:24] == FRAME_MAGIC_HEAD))
-                    rx_next_state = RX_WAIT_TYPE;
-            end
-            RX_WAIT_TYPE: begin
-                if (s_hs) begin
+                if (s_hs && (s_axis_rsp_tdata[31:24] == FRAME_MAGIC_HEAD)) begin
                     if ((s_axis_rsp_tdata[23:16] == FRAME_TYPE_WR_RSP) ||
                         (s_axis_rsp_tdata[23:16] == FRAME_TYPE_RD_RSP))
                         rx_next_state = RX_PAYLOAD;
-                    else
-                        rx_next_state = RX_WAIT_HEAD; // 未知类型，丢弃
+                    // 有效魔数但未知类型，丢弃此拍
                 end
             end
             RX_PAYLOAD: begin
@@ -619,42 +603,47 @@ module axi4lite2axist #(
             rx_cnt        <= 2'd0;
             rx_bresp_tmp  <= 2'b00;
             rx_rdata_tmp  <= 32'd0;
+            rx_rresp_tmp  <= 2'b00;
             rx_push_b     <= 1'b0;
             rx_push_bresp <= 2'b00;
             rx_push_r     <= 1'b0;
             rx_push_rdata <= 32'd0;
+            rx_push_rresp <= 2'b00;
         end else begin
             rx_push_b <= 1'b0;
             rx_push_r <= 1'b0;
 
             if (s_hs) begin
                 case (rx_state)
+                    // 修正 C-02：同拍锁存帧类型和净荷长度
                     RX_WAIT_HEAD: begin
-                        // 包头已校验，无操作
-                    end
-
-                    RX_WAIT_TYPE: begin
-                        rx_type <= s_axis_rsp_tdata[23:16];
-                        rx_cnt  <= 2'd0;
-                        if (s_axis_rsp_tdata[23:16] == FRAME_TYPE_WR_RSP)
-                            rx_need <= 2'd1;
-                        else if (s_axis_rsp_tdata[23:16] == FRAME_TYPE_RD_RSP)
-                            rx_need <= 2'd1;
-                        else
-                            rx_need <= 2'd0;
+                        if (s_axis_rsp_tdata[31:24] == FRAME_MAGIC_HEAD) begin
+                            rx_type <= s_axis_rsp_tdata[23:16];
+                            rx_cnt  <= 2'd0;
+                            if (s_axis_rsp_tdata[23:16] == FRAME_TYPE_WR_RSP)
+                                rx_need <= 2'd1;  // 写响应 1 拍净荷
+                            else if (s_axis_rsp_tdata[23:16] == FRAME_TYPE_RD_RSP)
+                                rx_need <= 2'd2;  // 修正 M-04：读响应 2 拍净荷（RDATA + RRESP）
+                            else
+                                rx_need <= 2'd0;
+                        end
                     end
 
                     RX_PAYLOAD: begin
                         if (rx_type == FRAME_TYPE_WR_RSP) begin
                             rx_bresp_tmp <= s_axis_rsp_tdata[1:0];
                         end else if (rx_type == FRAME_TYPE_RD_RSP) begin
-                            rx_rdata_tmp <= s_axis_rsp_tdata;
+                            // 修正 M-04：读响应分拍接收 RDATA 和 RRESP
+                            case (rx_cnt)
+                                2'd0: rx_rdata_tmp <= s_axis_rsp_tdata;       // 拍1: RDATA
+                                2'd1: rx_rresp_tmp <= s_axis_rsp_tdata[1:0];  // 拍2: RRESP
+                                default: ;
+                            endcase
                         end
                         rx_cnt <= rx_cnt + 2'd1;
                     end
 
                     RX_WAIT_TAIL: begin
-                        // 校验包尾魔数与 tlast
                         if ((s_axis_rsp_tdata[31:24] == FRAME_MAGIC_TAIL) && s_axis_rsp_tlast) begin
                             if (rx_type == FRAME_TYPE_WR_RSP) begin
                                 rx_push_b     <= 1'b1;
@@ -663,9 +652,9 @@ module axi4lite2axist #(
                             if (rx_type == FRAME_TYPE_RD_RSP) begin
                                 rx_push_r     <= 1'b1;
                                 rx_push_rdata <= rx_rdata_tmp;
+                                rx_push_rresp <= rx_rresp_tmp;
                             end
                         end
-                        // 包尾错误则丢弃，不推入 FIFO
                     end
 
                     default: ;
@@ -708,9 +697,9 @@ module axi4lite2axist #(
                 s_axi_rvalid <= 1'b0;
 
             if (rrsp_rd_en) begin
-                // V3: 从 RRSP FIFO FWFT dout 直接读取
-                s_axi_rdata  <= rrsp_dout[RRSP_FIFO_W-1:0];
-                s_axi_rresp  <= 2'b00; // OKAY
+                // 修正 M-04：从 RRSP FIFO 提取 rdata 和 rresp
+                s_axi_rdata  <= rrsp_dout[RRSP_FIFO_W-1:2];
+                s_axi_rresp  <= rrsp_dout[1:0];
                 s_axi_rvalid <= 1'b1;
             end
         end

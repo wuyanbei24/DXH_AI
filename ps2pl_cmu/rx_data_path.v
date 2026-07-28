@@ -95,8 +95,13 @@ always @(*) begin
     case(curr_state)
         IDLE: begin
             nxt_data_cnt = 8'd0;
-            if(next_state == RX_WRITE)
-                nxt_bram_addr = 8'd0;
+            // P-03修复：IDLE→RX_WRITE转换时立即写入首拍数据
+            if(next_state == RX_WRITE) begin
+                nxt_bram_addr  = 8'd0;
+                nxt_bram_wr_en = 1'b1;
+                nxt_bram_wdata = pl_rx_data;
+                nxt_data_cnt   = 8'd1;    // 首拍已写，计数从1开始
+            end
         end
         RX_WRITE: begin
             nxt_bram_addr  = data_cnt;
@@ -107,7 +112,8 @@ always @(*) begin
         end
         RX_FINISH: begin
             // 帧结束：锁存长度，产生单拍脉冲
-            nxt_rx_len     = data_cnt + 1'b1;
+            // P-08修复：data_cnt=255时防止溢出为0
+            nxt_rx_len     = (data_cnt == 8'd0) ? 8'd1 : data_cnt;
             nxt_rx_ready   = 1'b1;
             nxt_pl_rx_done = 1'b1;
             if(rx_irq_en)

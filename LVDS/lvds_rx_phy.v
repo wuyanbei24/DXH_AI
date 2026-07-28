@@ -76,6 +76,8 @@ reg  [31:0] valid_window;
 reg  [4:0]  scan_step;
 reg         scan_start;
 reg         scan_done;
+// 【修正C3】独立的扫描成功标志，替代best_delay_val是否为0来判断
+reg         scan_success;
 
 // 【修正问题13】BITSLIP单周期脉冲控制
 reg  [3:0] bitslip_cnt;
@@ -91,6 +93,8 @@ localparam MAX_RETRY = 2'd3;
 reg [7:0] lock_match_cnt;
 localparam LOCK_CHECK_CYCLES = 16'd5000;
 localparam LOCK_VOTE_THRESHOLD = 8'd200;  // 5000次中至少200次匹配
+// 【修正C2】BITSLIP最大尝试次数，DDR DATA_WIDTH=8时最多7次即可遍历所有字边界
+localparam MAX_BITSLIP_CNT = DATA_WIDTH - 1;
 
 // 差分输入缓冲
 IBUFDS #(.DIFF_TERM("TRUE"), .IOSTANDARD("LVDS_25")) u_ibufds_data (
@@ -191,9 +195,12 @@ always @(*) begin
     m_next_state = m_curr_state;
     case(m_curr_state)
         M_IDLE:       if(idelay_rdy) m_next_state = M_DELAY_SCAN;  // 等待IDELAYCTRL就绪
-        M_DELAY_SCAN: if(scan_done) m_next_state = (|best_delay_val) ? M_BIT_ALIGN : M_FAULT;
+        // 【修正C3】使用scan_success判断扫描是否成功，而非best_delay_val是否为0
+        M_DELAY_SCAN: if(scan_done) m_next_state = scan_success ? M_BIT_ALIGN : M_FAULT;
         M_BIT_ALIGN:  m_next_state = M_WORD_ALIGN;
+        // 【修正C2】字对齐成功或BITSLIP超限均退出，超限进入M_FAULT触发重试
         M_WORD_ALIGN: if(align_check_cnt >= 8'd16) m_next_state = M_LOCK_CHECK;
+                      else if(bitslip_cnt >= MAX_BITSLIP_CNT) m_next_state = M_FAULT;
         // 【修正问题14】锁定检查：多次采样投票，匹配次数超阈值才进入NORMAL
         M_LOCK_CHECK: if(lock_timer >= LOCK_CHECK_CYCLES)
                           m_next_state = (lock_match_cnt >= LOCK_VOTE_THRESHOLD) ? M_NORMAL : M_FAULT;
@@ -238,6 +245,7 @@ always @(posedge clk_div or negedge rst_n) begin
                 bitslip_wait <= 1'b0;
             end
             // 【修正问题13】BITSLIP单周期脉冲 + 稳定等待
+            // 【修正C2】增加超限守卫，BITSLIP次数达上限后停止滑动
             M_WORD_ALIGN: begin
                 if(bitslip_wait) begin
                     // 等待ISERDESE2稳定（2拍）
@@ -247,7 +255,7 @@ always @(posedge clk_div or negedge rst_n) begin
                         // 稳定后采样判断
                         if(iserdes_q == 8'hB5) begin
                             align_check_cnt <= align_check_cnt + 1'b1;
-                        end else begin
+                        end else if(bitslip_cnt < MAX_BITSLIP_CNT) begin
                             align_check_cnt <= 8'd0;
                             bitslip_cnt <= bitslip_cnt + 1'b1;
                         end
@@ -255,7 +263,7 @@ always @(posedge clk_div or negedge rst_n) begin
                 end else begin
                     if(iserdes_q == 8'hB5) begin
                         align_check_cnt <= align_check_cnt + 1'b1;
-                    end else begin
+                    end else if(bitslip_cnt < MAX_BITSLIP_CNT) begin
                         align_check_cnt <= 8'd0;
                         bitslip_cnt <= bitslip_cnt + 1'b1;
                         // 产生单周期BITSLIP脉冲
@@ -331,6 +339,7 @@ always @(posedge clk_div or negedge rst_n) begin
         valid_window <= 32'd0;
         scan_done <= 1'b0;
         best_delay_val <= 5'd0;
+        scan_success <= 1'b0;
     end else begin
         delay_ce <= 1'b0;
         delay_ld <= 1'b0;
@@ -342,6 +351,7 @@ always @(posedge clk_div or negedge rst_n) begin
                 valid_window <= 32'd0;
                 scan_done <= 1'b0;
                 best_delay_val <= 5'd0;
+                scan_success <= 1'b0;
             end
             D_SET_DELAY: begin
                 delay_cnt_val <= scan_step;
@@ -378,10 +388,14 @@ always @(posedge clk_div or negedge rst_n) begin
                         end
                     end
 
-                    if(max_len >= MIN_WIN_SIZE)
+                    // 【修正C3】设置独立的扫描成功标志
+                    if(max_len >= MIN_WIN_SIZE) begin
+                        scan_success <= 1'b1;
                         best_delay_val <= max_start + (max_len >> 1);
-                    else
+                    end else begin
+                        scan_success <= 1'b0;
                         best_delay_val <= 5'd0;
+                    end
                 end
             end
             D_DONE: begin

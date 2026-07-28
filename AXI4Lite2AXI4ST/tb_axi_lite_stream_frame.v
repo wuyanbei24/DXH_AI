@@ -11,7 +11,7 @@ module tb_axi_lite_stream_frame;
     parameter C_S_AXI_ADDR_WIDTH = 32;
     parameter C_AXIS_DATA_WIDTH  = 32;
     parameter C_REG_NUM          = 4;
-    parameter C_FIFO_DEPTH       = 4;
+    parameter C_FIFO_DEPTH       = 16;
 
     reg                                 aclk;
     reg                                 aresetn;
@@ -92,17 +92,17 @@ module tb_axi_lite_stream_frame;
             s_axi_bready  = 1'b1;
 
             // 等待 AW 握手
-            wait(s_axi_awready);
+            while (!s_axi_awready) @(posedge aclk);
             @(posedge aclk);
             s_axi_awvalid = 1'b0;
 
             // 等待 W 握手（独立于 AW）
-            wait(s_axi_wready);
+            while (!s_axi_wready) @(posedge aclk);
             @(posedge aclk);
             s_axi_wvalid = 1'b0;
 
             // 等待 B 响应
-            wait(s_axi_bvalid);
+            while (!s_axi_bvalid) @(posedge aclk);
             @(posedge aclk);
             s_axi_bready = 1'b0;
             $display("[%0t] WRITE: Addr=0x%08x Data=0x%08x Strb=4'b%b Resp=2'b%b",
@@ -133,11 +133,11 @@ module tb_axi_lite_stream_frame;
             s_axi_wstrb   = strb;
             s_axi_wvalid  = 1'b1;
 
-            wait(s_axi_wready);
+            while (!s_axi_wready) @(posedge aclk);
             @(posedge aclk);
             s_axi_wvalid = 1'b0;
 
-            wait(s_axi_bvalid);
+            while (!s_axi_bvalid) @(posedge aclk);
             @(posedge aclk);
             s_axi_bready = 1'b0;
             $display("[%0t] WRITE_SPLIT: Addr=0x%08x Data=0x%08x Strb=4'b%b Resp=2'b%b",
@@ -156,11 +156,11 @@ module tb_axi_lite_stream_frame;
             s_axi_arvalid = 1'b1;
             s_axi_rready  = 1'b1;
 
-            wait(s_axi_arready);
+            while (!s_axi_arready) @(posedge aclk);
             @(posedge aclk);
             s_axi_arvalid = 1'b0;
 
-            wait(s_axi_rvalid);
+            while (!s_axi_rvalid) @(posedge aclk);
             @(posedge aclk);
             data = s_axi_rdata;
             s_axi_rready = 1'b0;

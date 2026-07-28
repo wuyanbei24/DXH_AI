@@ -34,7 +34,7 @@ reg [7:0] rx_len_ps; // PS 域 RX_LEN
 //---- TX_START 边沿同步（toggle + 边沿检测） ----
 reg        tx_start_toggle_q;   // PS 域 toggle 寄存器
 reg        tgl_sync1, tgl_sync2, tgl_sync2_d;
-assign tx_start_pl = tgl_sync2 & ~tgl_sync2_d;  // 上升沿单拍脉冲
+assign tx_start_pl = tgl_sync2 ^ tgl_sync2_d;  // P-06: 异或检测任意翻转边沿
 
 //---- TX_LEN 握手同步（PS→PL） ----
 reg        tx_len_req;          // PS 域请求
@@ -50,17 +50,19 @@ assign rx_irq_en_pl = irq_en_s2;
 //---- TX_DONE 脉冲同步（PL→PS） ----
 reg        txd_tgl_q;           // PL 域 toggle
 reg        txd_s1, txd_s2, txd_s2_d;
-wire       tx_done_edge = txd_s2 & ~txd_s2_d;
+wire       tx_done_edge = txd_s2 ^ txd_s2_d;    // P-06同类: 异或检测
 
 //---- RX_READY 脉冲同步（PL→PS） ----
 reg        rxr_tgl_q;           // PL 域 toggle
 reg        rxr_s1, rxr_s2, rxr_s2_d;
-wire       rx_ready_edge = rxr_s2 & ~rxr_s2_d;
+wire       rx_ready_edge = rxr_s2 ^ rxr_s2_d;    // P-06同类: 异或检测
 
 //---- RX_LEN 握手同步（PL→PS） ----
 reg        rx_len_req;          // PL 域请求
-reg        rx_len_ack_s1, rx_len_ack_s2;
-reg [7:0]  rx_len_hold_ps;
+reg [7:0]  rx_len_hold_pl;      // P-05/P-07: PL域保持数据的寄存器（仅PL域驱动）
+reg [7:0]  rx_len_hold_ps;      // PS域锁存的数据（仅PS域驱动）
+reg        rx_len_ack_ps;       // P-07: PS域产生的ack
+reg        rx_len_ack_to_pl_s1, rx_len_ack_to_pl_s2; // P-07: ack 同步到PL域
 reg        rx_len_req_s1, rx_len_req_s2;
 
 //===================== 寄存器读写（AXI域） =====================
@@ -81,7 +83,8 @@ always @(posedge s_axi_aclk or negedge s_axi_aresetn) begin
         if(rx_ready_edge) rx_ready_st <= 1'b1;
 
         // ---- RX_LEN 握手采样 ----
-        if(rx_len_req_s2 && !tx_len_ack_sync2) begin
+        // P-04修复: 使用 rx_len_ack_ps（RX方向）而非 tx_len_ack_sync2（TX方向）
+        if(rx_len_req_s2 && !rx_len_ack_ps) begin
             rx_len_ps <= rx_len_hold_ps;
         end
 
@@ -114,8 +117,10 @@ always @(posedge s_axi_aclk or negedge s_axi_aresetn) begin
         end
 
         // ---- TX_LEN 握手：收到 PL ack 后撤销 req ----
-        if(tx_len_ack_sync2)
-            tx_len_req <= 1'b0;
+        if(tx_len_ack_sync2) begin
+            tx_len_req  <= 1'b0;
+            tx_start_ps <= 1'b0;   // P-13: PL消费后自动回清tx_start_ps
+        end
 
         // ---- PS 读操作 ----
         if(reg_rd_en) begin
@@ -218,37 +223,44 @@ always @(posedge s_axi_aclk or negedge s_axi_aresetn) begin
     end
 end
 
-//===================== PL→PS：RX_LEN 握手同步 =====================
+//===================== PL→PS：RX_LEN 握手同步（P-05/P-07重写） =====================
+// PL域：产生req + 保持数据稳定
 always @(posedge clk_1m or negedge rst_n_1m) begin
     if(!rst_n_1m) begin
         rx_len_req      <= 1'b0;
-        rx_len_hold_ps  <= 8'd0;   // 注：此寄存器位于 PS 域，此处仅占位
+        rx_len_hold_pl  <= 8'd0;
+        rx_len_ack_to_pl_s1 <= 1'b0;
+        rx_len_ack_to_pl_s2 <= 1'b0;
     end else begin
+        // P-07: ack从PS域同步到PL域（2FF）
+        rx_len_ack_to_pl_s1 <= rx_len_ack_ps;
+        rx_len_ack_to_pl_s2 <= rx_len_ack_to_pl_s1;
+
         if(rx_ready_pl) begin
-            rx_len_req <= 1'b1;
-        end else if(rx_len_ack_s2) begin
-            rx_len_req <= 1'b0;
+            rx_len_req     <= 1'b1;
+            rx_len_hold_pl <= rx_len_pl;   // 锁存数据，req期间保持稳定
+        end else if(rx_len_ack_to_pl_s2) begin
+            rx_len_req <= 1'b0;            // 收到同步后的ack，撤销req
         end
     end
 end
-// PL 域保持 RX_LEN 稳定（rx_len_pl 在 req 期间不变）
+
+// PS域：同步req + 锁存数据 + 产生ack
 always @(posedge s_axi_aclk or negedge s_axi_aresetn) begin
     if(!s_axi_aresetn) begin
-        rx_len_req_s1 <= 1'b0;
-        rx_len_req_s2 <= 1'b0;
+        rx_len_req_s1  <= 1'b0;
+        rx_len_req_s2  <= 1'b0;
         rx_len_hold_ps <= 8'd0;
-        rx_len_ack_s1 <= 1'b0;
-        rx_len_ack_s2 <= 1'b0;
+        rx_len_ack_ps  <= 1'b0;
     end else begin
         rx_len_req_s1 <= rx_len_req;
         rx_len_req_s2 <= rx_len_req_s1;
-        if(rx_len_req_s2 && !rx_len_ack_s2) begin
-            rx_len_hold_ps <= rx_len_pl;
-            rx_len_ack_s1  <= 1'b1;
+        if(rx_len_req_s2 && !rx_len_ack_ps) begin
+            rx_len_hold_ps <= rx_len_hold_pl;  // 数据在req期间稳定
+            rx_len_ack_ps  <= 1'b1;
         end else if(!rx_len_req_s2) begin
-            rx_len_ack_s1  <= 1'b0;
+            rx_len_ack_ps  <= 1'b0;
         end
-        rx_len_ack_s2 <= rx_len_ack_s1;
     end
 end
 

@@ -14,7 +14,7 @@ module tx_data_path(
     output reg [15:0]   pl_tx_data
 );
 
-//===================== 状态定义（独热） =====================
+//===================== 状态定义（二进制编码） =====================
 localparam IDLE     = 2'b00;
 localparam TX_ADDR  = 2'b01;   // 发地址
 localparam TX_WAIT  = 2'b10;   // 等 BRAM 读延迟
@@ -72,7 +72,8 @@ always @(*) begin
         TX_ADDR:  next_state = TX_WAIT;
         TX_WAIT:  next_state = TX_OUT;
         TX_OUT: begin
-            if(data_cnt == tx_len_latch - 1'b1)
+            // P-11: 增加 tx_len_latch==0 保护
+            if(tx_len_latch == 8'd0 || data_cnt == tx_len_latch - 1'b1)
                 next_state = IDLE;
             else
                 next_state = TX_ADDR;
@@ -105,10 +106,11 @@ always @(*) begin
         TX_OUT: begin
             nxt_pl_tx_data  = bram_rdata;    // BRAM 数据已有效
             nxt_pl_tx_valid = 1'b1;
-            if(data_cnt < tx_len_latch - 1'b1)
-                nxt_data_cnt = data_cnt + 1'b1;
-            else
+            // P-11: 增加 tx_len_latch==0 保护防止下溢
+            if(tx_len_latch == 8'd0 || data_cnt >= tx_len_latch - 1'b1)
                 nxt_tx_done = 1'b1;          // 单拍脉冲
+            else
+                nxt_data_cnt = data_cnt + 1'b1;
         end
         default: nxt_data_cnt = 8'd0;
     endcase

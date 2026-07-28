@@ -9,7 +9,7 @@ module axi_lite_stream_bridge #(
     parameter C_S_AXI_ADDR_WIDTH = 32,
     parameter C_AXIS_DATA_WIDTH  = 32,
     parameter C_REG_NUM          = 4,
-    parameter C_FIFO_DEPTH       = 4
+    parameter C_FIFO_DEPTH       = 16
 )(
     input  wire                                 aclk,
     input  wire                                 aresetn,
