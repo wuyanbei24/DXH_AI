@@ -264,7 +264,7 @@ initial begin
     $display("[%0t] === 场景2：双向用户数据传输 ===", $time);
     fork
         // 主机发送递增序列
-        begin
+        begin : master_tx
             integer i;
             for(i = 0; i < 200; i = i + 1) begin
                 @(posedge clk_ref_master);
@@ -280,7 +280,7 @@ initial begin
             mst_tx_valid <= 1'b0;
         end
         // 从机发送递增序列
-        begin
+        begin : slave_tx
             integer j;
             for(j = 0; j < 200; j = j + 1) begin
                 @(posedge clk_ref_slave);

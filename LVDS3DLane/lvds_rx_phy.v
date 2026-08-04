@@ -62,6 +62,7 @@ wire [LANE_CNT*DATA_WIDTH-1:0] deskew_data_out;
 reg [15:0] lock_timer;
 reg [15:0] lock_match_cnt;
 reg [1:0]  retry_cnt;
+reg [15:0] fault_wait_timer;
 
 localparam LOCK_CHECK_CYCLES = 16'd5000;
 localparam [15:0] LOCK_VOTE_THRESHOLD = 16'd4000; // 80%通过率要求
@@ -209,7 +210,6 @@ always @(posedge clk_div or negedge rst_n) begin
 end
 
 // M_FAULT恢复等待计数器（N-07修复：避免永久死锁）
-reg [15:0] fault_wait_timer;
 always @(posedge clk_div or negedge rst_n) begin
     if(!rst_n)
         fault_wait_timer <= 16'd0;
