@@ -193,8 +193,6 @@ always @(posedge clk or negedge rst_n) begin
             end
         end
     end
-
-    if(retrain_ack) retrain_req <= 1'b0;
 end
 
 endmodule

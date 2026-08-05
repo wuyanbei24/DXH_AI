@@ -77,7 +77,7 @@ xpm_fifo_sync #(
     .RD_DATA_COUNT_WIDTH (9),
     .READ_DATA_WIDTH     (LANE_CNT*DATA_WIDTH),
     .READ_MODE           ("fwft"),
-    .SIM_ASSERT_CHK      (0),
+    // .SIM_ASSERT_CHK      (0),
     .USE_ADV_FEATURES    ("0000"),
     .WAKEUP_TIME         (0),
     .WRITE_DATA_WIDTH    (LANE_CNT*DATA_WIDTH),
@@ -308,13 +308,24 @@ OSERDESE2 #(
     .TQ         (),
     .CLK        (clk_ser),
     .CLKDIV     (clk_div),
-    .D1(1'b1), .D2(1'b0), .D3(1'b1), .D4(1'b0),
-    .D5(1'b1), .D6(1'b0), .D7(1'b1), .D8(1'b0),
+    .D1(1'b1), 
+    .D2(1'b0), 
+    .D3(1'b1), 
+    .D4(1'b0),
+    .D5(1'b1), 
+    .D6(1'b0), 
+    .D7(1'b1), 
+    .D8(1'b0),
     .OCE        (1'b1),
     .RST        (~rst_n),
-    .SHIFTIN1   (1'b0), .SHIFTIN2(1'b0),
-    .T1         (1'b0), .T2(1'b0), .T3(1'b0), .T4(1'b0),
-    .TBYTEIN    (1'b0), .TCE(1'b0)
+    .SHIFTIN1   (1'b0), 
+    .SHIFTIN2(1'b0),
+    .T1         (1'b0), 
+    .T2(1'b0), 
+    .T3(1'b0), 
+    .T4(1'b0),
+    .TBYTEIN    (1'b0), 
+    .TCE(1'b0)
 );
 
 OBUFDS #(.IOSTANDARD("LVDS_25"), .SLEW("FAST")) u_obufds_clk (

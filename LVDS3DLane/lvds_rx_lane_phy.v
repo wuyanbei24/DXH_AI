@@ -70,6 +70,8 @@ reg  [3:0] sample_err_cnt;  // N-11: 采样错误计数
 localparam SAMPLE_ERR_TOLERANCE = 4'd2; // 允许2次错误
 reg  [31:0] valid_window;
 reg         scan_done;
+reg         delay_win_valid;   // 延迟窗口查找组合结果
+reg  [4:0]  best_delay_comb;   // 最佳延迟值组合结果
 
 // 字对齐信号
 reg        bitslip_req;
@@ -89,21 +91,25 @@ IDELAYE2 #(
     .DELAY_SRC      ("IDATAIN"),
     .IDELAY_VALUE   (0),
     .REFCLK_FREQUENCY(200.0),
-    .HIGH_PERFORMANCE_MODE("TRUE")
+    .HIGH_PERFORMANCE_MODE("TRUE"),
+    .SIGNAL_PATTERN ("DATA" ) // DATA, CLOCK input signal
 ) u_idelay_data (
     .IDATAIN    (data_ibuf),
     .DATAOUT    (data_delay),
     .C          (clk_div),
     .CE         (delay_ce),
+    .CINVCTRL   (1'b0 ), // 1-bit input: Dynamic clock inversion input
     .INC        (delay_inc),
+    // .INC        (1'b0),
     .LD         (delay_ld),
+    // .LD         (1'b1),
     .LDPIPEEN   (1'b0),
     .CNTVALUEIN (delay_cnt_val),
     .CNTVALUEOUT(delay_cur_val),
     .DATAIN     (1'b0),
-    .CINVCTRL   (1'b0),
     .REGRST     (~rst_n)
 );
+
 
 // 解串器
 ISERDESE2 #(
@@ -111,34 +117,72 @@ ISERDESE2 #(
     .DATA_WIDTH         (DATA_WIDTH),
     .DYN_CLKDIV_INV_EN  ("FALSE"),
     .DYN_CLK_INV_EN     ("FALSE"),
-    .INIT_Q1            (1'b0), .INIT_Q2(1'b0), .INIT_Q3(1'b0), .INIT_Q4(1'b0),
+    .INIT_Q1            (1'b0), 
+    .INIT_Q2            (1'b0), 
+    .INIT_Q3            (1'b0), 
+    .INIT_Q4            (1'b0),
     .INTERFACE_TYPE     ("NETWORKING"),
     .IOBDELAY           ("IFD"),
     .NUM_CE             (1),
     .OFB_USED           ("FALSE"),
     .SERDES_MODE        ("MASTER"),
-    .SRVAL_Q1           (1'b0), .SRVAL_Q2(1'b0), .SRVAL_Q3(1'b0), .SRVAL_Q4(1'b0)
+    .SRVAL_Q1           (1'b0), 
+    .SRVAL_Q2           (1'b0), 
+    .SRVAL_Q3           (1'b0), 
+    .SRVAL_Q4           (1'b0)
 ) u_iserdes_data (
-    .Q1(iserdes_q[0]), .Q2(iserdes_q[1]), .Q3(iserdes_q[2]), .Q4(iserdes_q[3]),
-    .Q5(iserdes_q[4]), .Q6(iserdes_q[5]), .Q7(iserdes_q[6]), .Q8(iserdes_q[7]),
-    .SHIFTOUT1 (), .SHIFTOUT2 (),
+    .Q1(iserdes_q[0]), 
+    .Q2(iserdes_q[1]), 
+    .Q3(iserdes_q[2]), 
+    .Q4(iserdes_q[3]),
+    .Q5(iserdes_q[4]), 
+    .Q6(iserdes_q[5]), 
+    .Q7(iserdes_q[6]), 
+    .Q8(iserdes_q[7]),
+    .SHIFTOUT1 (), 
+    .SHIFTOUT2 (),
     .BITSLIP  (bitslip_req),
-    .CE1      (1'b1), .CE2(1'b1),
+    .CE1      (1'b1), 
+    .CE2      (1'b1),
     .CLKDIVP  (1'b0),
     .CLK      (clk_bufio),
     .CLKB     (~clk_bufio),
     .CLKDIV   (clk_div),
-    .OCLK     (1'b0), .OCLKB(1'b0),
+    .OCLK     (1'b0), 
+    .OCLKB    (1'b0),
     .D        (data_ibuf),
     .DDLY     (data_delay),
     .OFB      (1'b0),
     .RST      (~rst_n),
-    .SHIFTIN1 (1'b0), .SHIFTIN2(1'b0),
+    .SHIFTIN1 (1'b0), 
+    .SHIFTIN2(1'b0),
     .DYNCLKDIVSEL(1'b0),
     .DYNCLKSEL   (1'b0)
 );
 
 assign rx_data = iserdes_q;
+
+// 延迟窗口查找组合逻辑（供D_CALC_WIN状态和lane_calib_err独立块共用）
+always @(*) begin : calc_delay_window
+    reg [4:0] curr_start, curr_len, max_start, max_len;
+    integer i;
+    curr_start = 5'd0; curr_len = 5'd0;
+    max_start  = 5'd0; max_len  = 5'd0;
+    for(i = 0; i < 32; i = i + 1) begin
+        if(valid_window[i]) begin
+            if(curr_len == 0) curr_start = i[4:0];
+            curr_len = curr_len + 1'b1;
+            if(curr_len > max_len) begin
+                max_len = curr_len;
+                max_start = curr_start;
+            end
+        end else begin
+            curr_len = 5'd0;
+        end
+    end
+    delay_win_valid = (max_len >= MIN_WIN_SIZE);
+    best_delay_comb = max_start + (max_len >> 1);
+end
 
 // 延迟校准状态机（三段式）
 always @(posedge clk_div or negedge rst_n) begin
@@ -172,7 +216,6 @@ always @(posedge clk_div or negedge rst_n) begin
         valid_window <= 32'd0;
         scan_done <= 1'b0;
         best_delay_val <= 5'd0;
-        lane_calib_err <= 1'b0;
     end else begin
         delay_ce <= 1'b0;
         delay_ld <= 1'b0;
@@ -183,7 +226,6 @@ always @(posedge clk_div or negedge rst_n) begin
                 scan_step <= 5'd0;
                 sample_cnt <= 5'd0;
                 valid_window <= 32'd0;
-                lane_calib_err <= 1'b0;
             end
             D_SET_DELAY: begin
                 delay_cnt_val <= scan_step;
@@ -204,30 +246,8 @@ always @(posedge clk_div or negedge rst_n) begin
                 valid_window[scan_step] <= sample_valid;
                 scan_step <= scan_step + 1'b1;
             end
-            D_CALC_WIN: begin : find_max_window
-                reg [4:0] curr_start, curr_len, max_start, max_len;
-                integer i;
-                curr_start = 5'd0; curr_len = 5'd0;
-                max_start  = 5'd0; max_len  = 5'd0;
-                for(i = 0; i < 32; i = i + 1) begin
-                    if(valid_window[i]) begin
-                        if(curr_len == 0) curr_start = i[4:0];
-                        curr_len = curr_len + 1'b1;
-                        if(curr_len > max_len) begin
-                            max_len = curr_len;
-                            max_start = curr_start;
-                        end
-                    end else begin
-                        curr_len = 5'd0;
-                    end
-                end
-                if(max_len >= MIN_WIN_SIZE) begin
-                    best_delay_val <= max_start + (max_len >> 1);
-                    lane_calib_err <= 1'b0;
-                end else begin
-                    best_delay_val <= 5'd0;
-                    lane_calib_err <= 1'b1;
-                end
+            D_CALC_WIN: begin
+                best_delay_val <= delay_win_valid ? best_delay_comb : 5'd0;
             end
             D_DONE: begin
                 scan_done <= 1'b1;
@@ -300,10 +320,6 @@ always @(posedge clk_div or negedge rst_n) begin
                     align_check_cnt <= align_check_cnt + 1'b1;
                 end else begin
                     align_check_cnt <= 8'd0;
-                    // N-12: bitslip溢出时标记校准错误
-                    if(bitslip_cnt >= MAX_BITSLIP) begin
-                        lane_calib_err <= 1'b1;
-                    end
                 end
             end
             default: ;
@@ -315,10 +331,25 @@ always @(posedge clk_div or negedge rst_n) begin
 
         if(retrain_req) begin
             lane_align_done <= 1'b0;
-            lane_calib_err <= 1'b0;
             bitslip_cnt <= 4'd0;
         end
     end
+end
+
+// lane_calib_err 集中管理（独立always块）
+// 清零：复位 / retrain_req / D_IDLE(新一轮扫描)
+// 置位：D_CALC_WIN窗口不足 / W_CHECK bitslip溢出
+always @(posedge clk_div or negedge rst_n) begin
+    if(!rst_n)
+        lane_calib_err <= 1'b0;
+    else if(retrain_req)
+        lane_calib_err <= 1'b0;
+    else if(d_curr_state == D_IDLE)
+        lane_calib_err <= 1'b0;
+    else if(d_curr_state == D_CALC_WIN)
+        lane_calib_err <= ~delay_win_valid;
+    else if(w_curr_state == W_CHECK && iserdes_q != 8'hB5 && bitslip_cnt >= MAX_BITSLIP)
+        lane_calib_err <= 1'b1;
 end
 
 endmodule

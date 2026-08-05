@@ -1,4 +1,4 @@
-`timescale 1ns / 1ps
+`timescale 1ps / 1ps
 `include "glbl.v"
 
 //============================================================================
@@ -20,13 +20,13 @@ localparam LANE_CNT = 3;
 
 // 时钟与复位
 reg clk_ref_master;
-reg clk_ref_slave;
+reg clk_ref_slave ;
 reg clk_ser_master;
-reg clk_ser_slave;
+reg clk_ser_slave ;
 reg clk_div_master;
-reg clk_div_slave;
-reg clk_200m;
-reg rst_n;
+reg clk_div_slave ;
+reg clk_200m      ;
+reg rst_n = 1'b0;
 
 // LVDS互连线
 // 主机→从机方向
@@ -107,8 +107,12 @@ always #(CLK_200M_PERIOD/2) clk_200m = ~clk_200m;
 // 链路延迟与故障注入模型
 // 每路数据独立延迟，支持通道偏移与断链
 // ==========================
-assign #(2.0) m2s_clk_p_del = link_break_m2s ? 1'bz : m2s_clk_p;
-assign #(2.0) m2s_clk_n_del = link_break_m2s ? 1'bz : m2s_clk_n;
+// assign #(2.0) m2s_clk_p_del = link_break_m2s ? 1'bz : m2s_clk_p;
+// assign #(2.0) m2s_clk_n_del = link_break_m2s ? 1'bz : m2s_clk_n;
+
+assign #(2.0) m2s_clk_p_del =   m2s_clk_p;
+assign #(2.0) m2s_clk_n_del =   m2s_clk_n;
+
 
 generate
     genvar lane;
@@ -118,9 +122,10 @@ generate
     end
 endgenerate
 
-assign #(2.0) s2m_clk_p_del = link_break_s2m ? 1'bz : s2m_clk_p;
-assign #(2.0) s2m_clk_n_del = link_break_s2m ? 1'bz : s2m_clk_n;
-
+// assign #(2.0) s2m_clk_p_del = link_break_s2m ? 1'bz : s2m_clk_p;
+// assign #(2.0) s2m_clk_n_del = link_break_s2m ? 1'bz : s2m_clk_n;
+assign #(2.0) s2m_clk_p_del =  s2m_clk_p;
+assign #(2.0) s2m_clk_n_del =  s2m_clk_n;
 generate
     for(lane = 0; lane < LANE_CNT; lane = lane + 1) begin : gen_s2m_delay
         assign #(2.0 + lane_delay[lane]) s2m_data_p_del[lane] = link_break_s2m ? 1'bz : s2m_data_p[lane];
@@ -147,7 +152,9 @@ lvds_bidirectional_top #(
     .tx_lvds_data_p(m2s_data_p), .tx_lvds_data_n(m2s_data_n),
     // 接收方向
     .rx_lvds_clk_p(s2m_clk_p_del), .rx_lvds_clk_n(s2m_clk_n_del),
+    // .rx_lvds_clk_p(s2m_clk_p), .rx_lvds_clk_n(s2m_clk_n),
     .rx_lvds_data_p(s2m_data_p_del), .rx_lvds_data_n(s2m_data_n_del),
+    // .rx_lvds_data_p(s2m_data_p), .rx_lvds_data_n(s2m_data_n),
     // 用户接口
     .user_tx_data(mst_tx_data),
     .user_tx_valid(mst_tx_valid),
@@ -180,7 +187,9 @@ lvds_bidirectional_top #(
     .tx_lvds_data_p(s2m_data_p), .tx_lvds_data_n(s2m_data_n),
     // 接收方向
     .rx_lvds_clk_p(m2s_clk_p_del), .rx_lvds_clk_n(m2s_clk_n_del),
+    // .rx_lvds_clk_p(m2s_clk_p), .rx_lvds_clk_n(m2s_clk_n),
     .rx_lvds_data_p(m2s_data_p_del), .rx_lvds_data_n(m2s_data_n_del),
+    // .rx_lvds_data_p(m2s_data_p), .rx_lvds_data_n(m2s_data_n),
     // 用户接口
     .user_tx_data(slv_tx_data),
     .user_tx_valid(slv_tx_valid),
@@ -208,7 +217,7 @@ always @(posedge clk_ref_slave or negedge rst_n) begin
         slv_rx_byte_cnt <= slv_rx_byte_cnt + 1;
         if(slv_rx_data != slv_expect_data) begin
             slv_rx_err_cnt <= slv_rx_err_cnt + 1;
-            $display("[%0t] ERROR: 从机接收数据错误! 期望=%h, 实际=%h", $time, slv_expect_data, slv_rx_data);
+            $display("[%0t] ERROR: Slave RX data mismatch! expected=%h, got=%h", $time, slv_expect_data, slv_rx_data);
         end
         slv_expect_data <= slv_expect_data + 1'b1;
     end
@@ -223,7 +232,7 @@ always @(posedge clk_ref_master or negedge rst_n) begin
         mst_rx_byte_cnt <= mst_rx_byte_cnt + 1;
         if(mst_rx_data != mst_expect_data) begin
             mst_rx_err_cnt <= mst_rx_err_cnt + 1;
-            $display("[%0t] ERROR: 主机接收数据错误! 期望=%h, 实际=%h", $time, mst_expect_data, mst_rx_data);
+            $display("[%0t] ERROR: Master RX data mismatch! expected=%h, got=%h", $time, mst_expect_data, mst_rx_data);
         end
         mst_expect_data <= mst_expect_data + 1'b1;
     end
@@ -255,13 +264,13 @@ initial begin
     rst_n = 1;
 
     // 场景1：双向建链握手测试
-    $display("[%0t] === 场景1：双向建链握手测试 ===", $time);
+    $display("[%0t] === Scenario 1: Bidirectional link handshake test ===", $time);
     wait(mst_link_up && slv_link_up);
-    $display("[%0t] 双向建链成功！mst_link_up=%b, slv_link_up=%b", $time, mst_link_up, slv_link_up);
+    $display("[%0t] Bidirectional link established! mst_link_up=%b, slv_link_up=%b", $time, mst_link_up, slv_link_up);
     #2000;
 
     // 场景2：双向用户数据传输
-    $display("[%0t] === 场景2：双向用户数据传输 ===", $time);
+    $display("[%0t] === Scenario 2: Bidirectional user data transfer ===", $time);
     fork
         // 主机发送递增序列
         begin : master_tx
@@ -297,8 +306,8 @@ initial begin
         end
     join
     #20000;
-    $display("[%0t] 主机接收字节: %0d, 错误: %0d", $time, mst_rx_byte_cnt*3, mst_rx_err_cnt);
-    $display("[%0t] 从机接收字节: %0d, 错误: %0d", $time, slv_rx_byte_cnt*3, slv_rx_err_cnt);
+    $display("[%0t] Master RX bytes: %0d, errors: %0d", $time, mst_rx_byte_cnt*3, mst_rx_err_cnt);
+    $display("[%0t] Slave RX bytes: %0d, errors: %0d", $time, slv_rx_byte_cnt*3, slv_rx_err_cnt);
 
     // 场景3：通道偏移对齐测试
     $display("[%0t] === 场景3：通道偏移对齐测试 ===", $time);
@@ -310,39 +319,39 @@ initial begin
     #100;
     mst_ext_retrain = 0;
     wait(mst_link_up && slv_link_up);
-    $display("[%0t] 通道偏移下建链成功！通道对齐功能正常", $time);
+    $display("[%0t] Link established with lane skew! Lane alignment OK", $time);
     // 恢复延迟
     lane_delay[1] = 0.0;
     lane_delay[2] = 0.0;
     #10000;
 
     // 场景4：正向链路故障重训练
-    $display("[%0t] === 场景4：正向链路故障重训练 ===", $time);
+    $display("[%0t] === Scenario 4: Forward link fault retrain ===", $time);
     link_break_m2s = 1;
     #500000;
     link_break_m2s = 0;
     wait(mst_link_up && slv_link_up);
-    $display("[%0t] 正向链路重训练恢复成功！", $time);
+    $display("[%0t] Forward link retrain recovery success!", $time);
     #10000;
 
     // 场景5：外部强制重训练
-    $display("[%0t] === 场景5：外部强制重训练 ===", $time);
+    $display("[%0t] === Scenario 5: External force retrain ===", $time);
     mst_ext_retrain = 1;
     #100;
     mst_ext_retrain = 0;
     wait(mst_link_up && slv_link_up);
-    $display("[%0t] 外部强制重训练成功！", $time);
+    $display("[%0t] External force retrain success!", $time);
     #10000;
 
     // 仿真结束
-    $display("[%0t] === 全部测试场景完成 ===", $time);
-    $display("最终统计：");
-    $display("主机接收: %0d 字节, %0d 错误", mst_rx_byte_cnt*3, mst_rx_err_cnt);
-    $display("从机接收: %0d 字节, %0d 错误", slv_rx_byte_cnt*3, slv_rx_err_cnt);
+    $display("[%0t] === All test scenarios completed ===", $time);
+    $display("Final statistics:");
+    $display("Master RX: %0d bytes, %0d errors", mst_rx_byte_cnt*3, mst_rx_err_cnt);
+    $display("Slave RX: %0d bytes, %0d errors", slv_rx_byte_cnt*3, slv_rx_err_cnt);
     if(mst_rx_err_cnt == 0 && slv_rx_err_cnt == 0) begin
-        $display("测试结果：PASS");
+        $display("Test result: PASS");
     end else begin
-        $display("测试结果：FAIL");
+        $display("Test result: FAIL");
     end
     $finish;
 end
@@ -350,7 +359,7 @@ end
 // 超时保护
 initial begin
     #200000000;
-    $display("[%0t] ERROR: 仿真超时！", $time);
+    $display("[%0t] ERROR: Simulation timeout!", $time);
     $finish;
 end
 
