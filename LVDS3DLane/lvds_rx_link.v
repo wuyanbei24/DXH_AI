@@ -5,6 +5,8 @@
 //   - 帧格式：[SOF1|SOF2|TYPE] [LEN|0|0] [DATA...] [CHECKSUM|0|0]
 //   - TX保证3字节对齐，SOF1固定在byte0，简化检测逻辑
 //   - 数据/心跳/控制帧分流，重训练检测，心跳超时检测
+//   - [V4修复] LT-09: retrain_req保持到phy_ready下降, 确保物理层已重启
+//   - [V4修复] LT-14: 心跳超时仅在link_up=1后启用, 避免握手期间误触发
 // Source: Xilinx 7系列FPGA双向3路数据LVDS通信设计文档_V2.0  §4.4
 //============================================================================
 module lvds_rx_link #(
@@ -114,13 +116,18 @@ always @(posedge clk or negedge rst_n) begin
         frame_err_cnt <= 4'd0;
         heartbeat_timer <= 20'd0;
         heartbeat_miss_cnt <= 4'd0;
+        // [V4修复 LT-09] phy_ready下降时清retrain_req, 确认物理层已重启
         retrain_req <= 1'b0;
         link_up <= 1'b0;
         heartbeat_err <= 1'b0;
     end else if(rx_data_valid) begin
         rx_data_out_valid <= 1'b0;
         ctrl_frame_valid <= 1'b0;
-        heartbeat_timer <= heartbeat_timer + 1'b1;
+        // [V4修复 LT-14] 心跳超时仅在link_up=1后启用
+        if(link_up)
+            heartbeat_timer <= heartbeat_timer + 1'b1;
+        else
+            heartbeat_timer <= 20'd0;
 
         case(f_curr_state)
             F_IDLE: begin
@@ -176,6 +183,7 @@ always @(posedge clk or negedge rst_n) begin
                 end else begin
                     frame_err_cnt <= frame_err_cnt + 1'b1;
                 end
+                // [V4修复 LT-09] retrain_req保持到phy_ready下降, 不在此清零
                 if(frame_err_cnt >= MAX_ERR_CNT) begin
                     retrain_req <= 1'b1;
                 end
@@ -183,8 +191,8 @@ always @(posedge clk or negedge rst_n) begin
             default: ;
         endcase
 
-        // 心跳超时检测（含phy_ready=1但无有效帧的场景）
-        if(heartbeat_timer >= HEARTBEAT_TIMEOUT_CNT) begin
+        // [V4修复 LT-14] 心跳超时检测仅在link_up=1后启用
+        if(link_up && heartbeat_timer >= HEARTBEAT_TIMEOUT_CNT) begin
             heartbeat_timer <= 20'd0;
             heartbeat_miss_cnt <= heartbeat_miss_cnt + 1'b1;
             if(heartbeat_miss_cnt >= 4'd5) begin

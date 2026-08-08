@@ -5,6 +5,9 @@
 //   - 封装单路LVDS接收的完整物理层校准逻辑
 //   - 每通道独立执行延迟扫描与字对齐
 //   - IDELAYE2延迟校准 + ISERDESE2解串 + BITSLIP字对齐
+//   - [V4修复] LT-06: 增加W_DONE状态, bitslip_cnt在scan_done上升沿清零
+//   - [V4修复] LT-08: lane_align_done在信号恶化时自动清零
+//   - [V4修复] LT-11: 增加D_SETTLE等待IDELAY稳定, 修正采样次数, 容错改为统计总错误数
 // Source: Xilinx 7系列FPGA双向3路数据LVDS通信设计文档_V1.0  §4.2
 //============================================================================
 module lvds_rx_lane_phy #(
@@ -38,22 +41,26 @@ wire data_delay;
 wire [DATA_WIDTH-1:0] iserdes_q;
 
 // 延迟校准状态机
-localparam D_IDLE     = 3'd0,
-           D_SET_DELAY= 3'd1,
-           D_WAIT     = 3'd2,
-           D_SAMPLE   = 3'd3,
-           D_CALC_WIN = 3'd4,
-           D_DONE     = 3'd5;
+// [V4修复 LT-11] 增加D_SETTLE状态等待IDELAY输出稳定
+localparam D_IDLE      = 3'd0,
+           D_SET_DELAY = 3'd1,
+           D_SETTLE    = 3'd2,  // V4: 等待IDELAY输出稳定
+           D_WAIT      = 3'd3,
+           D_SAMPLE    = 3'd4,
+           D_CALC_WIN  = 3'd5,
+           D_DONE      = 3'd6;
 reg [2:0] d_curr_state;
 reg [2:0] d_next_state;
 
 // 字对齐状态机
-localparam W_IDLE     = 2'd0,
-           W_BITSLIP  = 2'd1,
-           W_WAIT     = 2'd2,
-           W_CHECK    = 2'd3;
-reg [1:0] w_curr_state;
-reg [1:0] w_next_state;
+// [V4修复 LT-06/LT-08] 增加W_DONE状态, 对齐成功后保持
+localparam W_IDLE     = 3'd0,
+           W_BITSLIP  = 3'd1,
+           W_WAIT     = 3'd2,
+           W_CHECK    = 3'd3,
+           W_DONE     = 3'd4;   // V4: 对齐成功后保持状态
+reg [2:0] w_curr_state;
+reg [2:0] w_next_state;
 
 // IDELAY控制信号
 reg  delay_ce;
@@ -66,19 +73,31 @@ wire [4:0] delay_cur_val;
 reg  [4:0] scan_step;
 reg  [4:0] sample_cnt;
 reg        sample_valid;
-reg  [3:0] sample_err_cnt;  // N-11: 采样错误计数
+reg  [3:0] sample_err_cnt;  // 采样错误计数
 localparam SAMPLE_ERR_TOLERANCE = 4'd2; // 允许2次错误
 reg  [31:0] valid_window;
 reg         scan_done;
 reg         delay_win_valid;   // 延迟窗口查找组合结果
 reg  [4:0]  best_delay_comb;   // 最佳延迟值组合结果
 
+// [V4修复 LT-11] IDELAY稳定等待计数器
+reg [2:0] settle_cnt;
+localparam SETTLE_CYCLES = 3'd3; // 等待3个周期确保IDELAY输出稳定
+
 // 字对齐信号
 reg        bitslip_req;
-reg        bitslip_wait;
+reg  [3:0] bitslip_wait;       // V4: 扩展为4位以容纳BITSLIP_WAIT_CYCLES
 reg  [7:0] align_check_cnt;
 reg  [3:0] bitslip_cnt;
 localparam MAX_BITSLIP = 4'd8;
+localparam BITSLIP_WAIT_CYCLES = 4'd5; // BITSLIP后等待ISERDESE2稳定
+
+// [V4修复 LT-08] 信号质量监测——连续非0xB5计数
+reg [7:0] bad_word_cnt;
+localparam BAD_WORD_THRESHOLD = 8'd32; // 连续32拍非0xB5则判定信号恶化
+
+// [V4修复 LT-06] scan_done上升沿检测
+reg scan_done_prev;
 
 
 
@@ -216,13 +235,14 @@ end
 always @(*) begin
     d_next_state = d_curr_state;
     case(d_curr_state)
-        D_IDLE:     if(~lane_align_done & ~retrain_req) d_next_state = D_SET_DELAY;
-        D_SET_DELAY:d_next_state = D_WAIT;
-        D_WAIT:     if(sample_cnt >= SAMPLE_CNT-1) d_next_state = D_SAMPLE;
-        D_SAMPLE:   d_next_state = (scan_step >= DELAY_STEPS - 1) ? D_CALC_WIN : D_SET_DELAY;
-        D_CALC_WIN: d_next_state = D_DONE;
-        D_DONE:     d_next_state = D_IDLE;
-        default:    d_next_state = D_IDLE;
+        D_IDLE:      if(~lane_align_done & ~retrain_req) d_next_state = D_SET_DELAY;
+        D_SET_DELAY: d_next_state = D_SETTLE;
+        D_SETTLE:    if(settle_cnt >= SETTLE_CYCLES) d_next_state = D_WAIT;  // V4: 等待IDELAY稳定
+        D_WAIT:      if(sample_cnt >= SAMPLE_CNT) d_next_state = D_SAMPLE;  // V4: 修正为>=SAMPLE_CNT, 采样16次
+        D_SAMPLE:    d_next_state = (scan_step >= DELAY_STEPS - 1) ? D_CALC_WIN : D_SET_DELAY;
+        D_CALC_WIN:  d_next_state = D_DONE;
+        D_DONE:      d_next_state = D_IDLE;
+        default:     d_next_state = D_IDLE;
     endcase
     if(retrain_req) d_next_state = D_IDLE;
 end
@@ -236,9 +256,11 @@ always @(posedge clk_div or negedge rst_n) begin
         scan_step <= 5'd0;
         sample_cnt <= 5'd0;
         sample_valid <= 1'b1;
+        sample_err_cnt <= 4'd0;
         valid_window <= 32'd0;
         scan_done <= 1'b0;
         best_delay_val <= 5'd0;
+        settle_cnt <= 3'd0;
     end else begin
         delay_ce <= 1'b0;
         delay_ld <= 1'b0;
@@ -248,6 +270,7 @@ always @(posedge clk_div or negedge rst_n) begin
                 scan_step <= 5'd0;
                 sample_cnt <= 5'd0;
                 valid_window <= 32'd0;
+                settle_cnt <= 3'd0;
             end
             D_SET_DELAY: begin
                 delay_cnt_val <= scan_step;
@@ -255,17 +278,22 @@ always @(posedge clk_div or negedge rst_n) begin
                 sample_cnt <= 5'd0;
                 sample_valid <= 1'b1;
                 sample_err_cnt <= 4'd0;
+                settle_cnt <= 3'd0;
             end
+            // [V4修复 LT-11] D_SETTLE: 等待IDELAY输出稳定后再采样
+            D_SETTLE: begin
+                settle_cnt <= settle_cnt + 1'b1;
+            end
+            // [V4修复 LT-11] D_WAIT: 采样SAMPLE_CNT次, 容错改为统计总错误数
             D_WAIT: begin
                 sample_cnt <= sample_cnt + 1'b1;
                 if(iserdes_q != 8'h55) begin
                     sample_err_cnt <= sample_err_cnt + 1'b1;
-                    if(sample_err_cnt >= SAMPLE_ERR_TOLERANCE)
-                        sample_valid <= 1'b0;
                 end
             end
+            // [V4修复 LT-11] D_SAMPLE: 统计总错误数判定, 而非先错即弃
             D_SAMPLE: begin
-                valid_window[scan_step] <= sample_valid;
+                valid_window[scan_step] <= (sample_err_cnt <= SAMPLE_ERR_TOLERANCE);
                 scan_step <= scan_step + 1'b1;
             end
             D_CALC_WIN: begin
@@ -296,16 +324,21 @@ always @(*) begin
     case(w_curr_state)
         W_IDLE:    if(scan_done & ~lane_calib_err) w_next_state = W_BITSLIP;
         W_BITSLIP: w_next_state = W_WAIT;
-        W_WAIT:    if(bitslip_wait) w_next_state = W_CHECK;
+        W_WAIT:    if(bitslip_wait >= BITSLIP_WAIT_CYCLES) w_next_state = W_CHECK;
         W_CHECK: begin
             if(align_check_cnt >= 8'd16)
-                w_next_state = W_IDLE;
+                w_next_state = W_DONE;  // V4: 对齐成功进W_DONE而非W_IDLE
             else if(iserdes_q != 8'hB5) begin
                 if(bitslip_cnt >= MAX_BITSLIP)
                     w_next_state = W_IDLE;  // 溢出，放弃对齐
                 else
                     w_next_state = W_BITSLIP;
             end
+        end
+        // [V4修复 LT-08] W_DONE: 对齐成功后保持, 仅retrain/err/信号恶化时退出
+        W_DONE: begin
+            if(bad_word_cnt >= BAD_WORD_THRESHOLD)
+                w_next_state = W_IDLE;  // 信号恶化, 重新对齐
         end
         default: w_next_state = W_IDLE;
     endcase
@@ -315,33 +348,50 @@ end
 always @(posedge clk_div or negedge rst_n) begin
     if(!rst_n) begin
         bitslip_req <= 1'b0;
-        bitslip_wait <= 1'b0;
+        bitslip_wait <= 4'd0;
         align_check_cnt <= 8'd0;
         bitslip_cnt <= 4'd0;
         lane_align_done <= 1'b0;
+        bad_word_cnt <= 8'd0;
     end else begin
         bitslip_req <= 1'b0;
 
         case(w_curr_state)
             W_IDLE: begin
                 align_check_cnt <= 8'd0;
-                bitslip_wait <= 1'b0;
-                // bitslip_cnt不在此清零，保留用于溢出检测
+                bitslip_wait <= 4'd0;
+                bad_word_cnt <= 8'd0;
+                // [V4修复 LT-06] bitslip_cnt在scan_done上升沿清零
+                if(scan_done & ~scan_done_prev)
+                    bitslip_cnt <= 4'd0;
             end
             W_BITSLIP: begin
                 bitslip_req <= 1'b1;
                 bitslip_cnt <= bitslip_cnt + 1'b1;
-                lane_align_done <= 1'b0;  // R-03: 重新对齐时清除已对齐标志
+                lane_align_done <= 1'b0;  // 重新对齐时清除已对齐标志
+                bad_word_cnt <= 8'd0;
             end
             W_WAIT: begin
                 bitslip_wait <= bitslip_wait + 1'b1;
             end
             W_CHECK: begin
-                bitslip_wait <= 1'b0;
+                bitslip_wait <= 4'd0;
                 if(iserdes_q == 8'hB5) begin
                     align_check_cnt <= align_check_cnt + 1'b1;
                 end else begin
                     align_check_cnt <= 8'd0;
+                end
+            end
+            // [V4修复 LT-08] W_DONE: 持续监测信号质量
+            W_DONE: begin
+                if(iserdes_q == 8'hB5) begin
+                    bad_word_cnt <= 8'd0;
+                end else begin
+                    bad_word_cnt <= bad_word_cnt + 1'b1;
+                end
+                // 信号恶化时清零lane_align_done, 通知上游
+                if(bad_word_cnt >= BAD_WORD_THRESHOLD) begin
+                    lane_align_done <= 1'b0;
                 end
             end
             default: ;
@@ -354,8 +404,17 @@ always @(posedge clk_div or negedge rst_n) begin
         if(retrain_req) begin
             lane_align_done <= 1'b0;
             bitslip_cnt <= 4'd0;
+            bad_word_cnt <= 8'd0;
         end
     end
+end
+
+// [V4修复 LT-06] scan_done上升沿检测, 用于在W_IDLE中清零bitslip_cnt
+always @(posedge clk_div or negedge rst_n) begin
+    if(!rst_n)
+        scan_done_prev <= 1'b0;
+    else
+        scan_done_prev <= scan_done;
 end
 
 // lane_calib_err 集中管理（独立always块）

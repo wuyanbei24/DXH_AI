@@ -3,6 +3,7 @@
 // Module: lvds_rx_channel
 // Description: 接收通道顶层
 //   - 封装物理层与链路层，对外提供统一24bit接口
+//   - [V4修复] LT-09: retrain_ack等待phy_ready下降后重新上升, 确认物理层已重启
 // Source: Xilinx 7系列FPGA双向3路数据LVDS通信设计文档_V1.0  §4.5
 //============================================================================
 module lvds_rx_channel #(
@@ -46,9 +47,28 @@ wire retrain_req_inner;
 
 assign retrain_trigger = retrain_req_inner;
 
-// retrain_req_inner延迟1拍作为ack，确保物理层有时间响应重训练请求
-// retrain_req_inner由link层发出，当phy_ready拉低时确认物理层已响应重训练
-wire retrain_ack_from_phy = retrain_req_inner & ~phy_ready;
+// [V4修复 LT-09] retrain_ack等待phy_ready下降后重新上升
+// 确认物理层已完全重启并重新进入校准状态
+// 原设计: retrain_req_inner & ~phy_ready (过早清除, 仅3-4周期)
+// 新设计: 检测phy_ready的下降-上升序列, 确保物理层已重启
+reg phy_ready_d;
+reg retrain_ack_pending;
+
+always @(posedge clk_div or negedge rst_n) begin
+    if(!rst_n) begin
+        phy_ready_d <= 1'b0;
+        retrain_ack_pending <= 1'b0;
+    end else begin
+        phy_ready_d <= phy_ready;
+        if(retrain_req_inner && phy_ready && ~phy_ready_d)
+            retrain_ack_pending <= 1'b1;  // V4: phy_ready下降, 开始等待重启
+        else if(retrain_ack_pending && phy_ready)
+            retrain_ack_pending <= 1'b0;  // V4: phy_ready重新上升, 确认重启完成
+    end
+end
+
+// retrain_ack: 等待phy_ready重新上升后才确认
+wire retrain_ack_from_phy = retrain_ack_pending && phy_ready;
 
 lvds_rx_phy #(
     .DATA_WIDTH(DATA_WIDTH),

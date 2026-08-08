@@ -5,6 +5,10 @@
 //   - 1路时钟缓冲 + 3路数据通道实例化
 //   - 新增通道对齐模块实现3路相位同步
 //   - 集成全局训练状态机
+//   - [V4修复] LT-02: 使用mfpga_clk_ip输出400MHz/100MHz, 满足DDR 8:1的4:1时钟比
+//   - [V4修复] LT-10: M_FAULT恢复时生成内部retrain脉冲, 复位所有子模块状态
+//   - [V4修复] LT-12: M_NORMAL状态下增加运行时信号质量监测
+//   - [V4修复] LT-16: 移除死代码retry_cnt, 改为fault_retry_cnt故障计数
 // Source: Xilinx 7系列FPGA双向3路数据LVDS通信设计文档_V1.0  §4.3
 //============================================================================
 module lvds_rx_phy #(
@@ -61,13 +65,22 @@ wire [LANE_CNT*DATA_WIDTH-1:0] deskew_data_out;
 
 reg [15:0] lock_timer;
 reg [15:0] lock_match_cnt;
-reg [1:0]  retry_cnt;
+// [V4修复 LT-16] 移除死代码retry_cnt, 改为fault_retry_cnt故障计数
+reg [3:0]  fault_retry_cnt;
 reg [15:0] fault_wait_timer;
+
+// [V4修复 LT-10] 内部retrain脉冲, M_FAULT恢复时复位所有子模块
+reg        internal_retrain;
+reg        internal_retrain_prev;
+
+// [V4修复 LT-12] 运行时信号质量监测
+reg [15:0] runtime_bad_cnt;
+localparam RUNTIME_BAD_THRESHOLD = 16'd1000; // 连续1000拍非0xB5则触发retrain
 
 localparam LOCK_CHECK_CYCLES = 16'd5000;
 localparam [15:0] LOCK_VOTE_THRESHOLD = 16'd4000; // 80%通过率要求
-localparam MAX_RETRY = 2'd3;
 localparam FAULT_RECOVERY_CYCLES = 16'd50000; // M_FAULT等待后自动恢复
+localparam MAX_FAULT_RETRY = 4'd5; // V4: 最大故障重试次数
 
 // 时钟缓冲通路
 IBUFDS #(
@@ -88,14 +101,15 @@ wire clk_out5_50    ;
 wire clk_out6_200   ;
 wire clk_out7_10    ;
 wire mmcm_lock      ;
-/*
+
+// [V4修复 LT-02] 使用mfpga_clk_ip输出400MHz(serial)+100MHz(parallel), 满足DDR 8:1的4:1时钟比
 mfpga_clk_ip lvds_clkdiv_gen 
  (
   // Clock out ports
-    .clk_out1(clk_out1_400   ),
+    .clk_out1(clk_out1_400   ),  // 400MHz serial clock for ISERDESE2 CLK
     .clk_out2(clk_out2_125   ),
     .clk_out3(clk_out3_125   ),
-    .clk_out4(clk_out4_100   ),
+    .clk_out4(clk_out4_100   ),  // 100MHz parallel clock for ISERDESE2 CLKDIV
     .clk_out5(clk_out5_50    ),
     .clk_out6(clk_out6_200   ),
     .clk_out7(clk_out7_10    ),
@@ -104,22 +118,10 @@ mfpga_clk_ip lvds_clkdiv_gen
  // Clock in ports
     .clk_in1(clk_ibuf)
  );
-*/
 
-
-lvds_rx_pll  inst_lvds_rx_pll
- ( 
-  // Clock out ports
-  .clk_out1(clk_out4_100),
-  // Status and control signals
-  .locked(mmcm_lock),
- // Clock in ports
-  .clk_in1(clk_ibuf)
- );
-
-
-
-assign clk_div = clk_out4_100;
+// [V4修复 LT-02] clk_bufio使用400MHz, clk_div使用100MHz, 比例4:1满足DDR 8:1
+assign clk_bufio = clk_out1_400;  // 400MHz serial clock
+assign clk_div   = clk_out4_100;  // 100MHz parallel clock
 
 // BUFIO u_bufio_clk (.I(clk_ibuf), .O(clk_bufio));
 // BUFR #(.BUFR_DIVIDE("4"), 
@@ -152,11 +154,10 @@ generate
             .rst_n(mmcm_lock),
             .lvds_data_p(lvds_data_p[lane_idx]),
             .lvds_data_n(lvds_data_n[lane_idx]),
-            // .clk_bufio(clk_bufio),
-            .clk_bufio(clk_ibuf),
+            .clk_bufio(clk_bufio),  // V4: 使用400MHz串行时钟
             .clk_div(clk_div),
             .ref_clk_200m(ref_clk_200m),
-            .retrain_req(retrain_req),
+            .retrain_req(retrain_req | internal_retrain),  // V4: 合并外部和内部retrain
             .rx_data(lane_data[lane_idx]),
             .lane_align_done(lane_align_done[lane_idx]),
             .lane_calib_err(lane_calib_err[lane_idx]),
@@ -205,7 +206,9 @@ always @(*) begin
         M_LANE_DESKEW: if(deskew_done) m_next_state = M_LOCK_CHECK;
         M_LOCK_CHECK:  if(lock_timer >= LOCK_CHECK_CYCLES)
                            m_next_state = (lock_match_cnt >= LOCK_VOTE_THRESHOLD) ? M_NORMAL : M_FAULT;
-        M_NORMAL:      if(retrain_req) m_next_state = M_IDLE;
+        // [V4修复 LT-12] M_NORMAL: 增加运行时信号质量监测
+        M_NORMAL:      if(retrain_req | (runtime_bad_cnt >= RUNTIME_BAD_THRESHOLD)) m_next_state = M_IDLE;
+        // [V4修复 LT-10] M_FAULT: 恢复时生成内部retrain脉冲
         M_FAULT:       if(fault_wait_timer >= FAULT_RECOVERY_CYCLES) m_next_state = M_IDLE;
         default:       m_next_state = M_IDLE;
     endcase
@@ -217,6 +220,7 @@ always @(posedge clk_div or negedge rst_n) begin
         align_err <= 1'b0;
         lock_timer <= 16'd0;
         lock_match_cnt <= 16'd0;
+        runtime_bad_cnt <= 16'd0;
     end else begin
         case(m_curr_state)
             M_IDLE: begin
@@ -224,6 +228,7 @@ always @(posedge clk_div or negedge rst_n) begin
                 align_err <= 1'b0;
                 lock_timer <= 16'd0;
                 lock_match_cnt <= 16'd0;
+                runtime_bad_cnt <= 16'd0;
             end
             M_CALIB: begin
                 phy_ready <= 1'b0;
@@ -240,27 +245,53 @@ always @(posedge clk_div or negedge rst_n) begin
                     lock_match_cnt <= lock_match_cnt + 1'b1;
                 end
             end
+            // [V4修复 LT-12] M_NORMAL: 运行时信号质量监测
             M_NORMAL: begin
                 phy_ready <= 1'b1;
                 align_err <= 1'b0;
+                // 监测3路数据是否仍为0xB5训练模式
+                if(deskew_data_out[7:0] == 8'hB5 &&
+                   deskew_data_out[15:8] == 8'hB5 &&
+                   deskew_data_out[23:16] == 8'hB5) begin
+                    runtime_bad_cnt <= 16'd0;
+                end else begin
+                    runtime_bad_cnt <= runtime_bad_cnt + 1'b1;
+                end
             end
             M_FAULT: begin
                 phy_ready <= 1'b0;
                 align_err <= 1'b1;
+                runtime_bad_cnt <= 16'd0;
             end
             default: ;
         endcase
     end
 end
 
-// 重试计数器
+// [V4修复 LT-16] 故障重试计数器 (替代原死代码retry_cnt)
 always @(posedge clk_div or negedge rst_n) begin
     if(!rst_n)
-        retry_cnt <= 2'd0;
-    else if(m_curr_state == M_IDLE && m_next_state == M_CALIB)
-        retry_cnt <= retry_cnt + 1'b1;
+        fault_retry_cnt <= 4'd0;
     else if(m_curr_state == M_NORMAL)
-        retry_cnt <= 2'd0;
+        fault_retry_cnt <= 4'd0;  // 正常运行时清零
+    else if(m_curr_state == M_FAULT && m_next_state == M_IDLE)
+        fault_retry_cnt <= fault_retry_cnt + 1'b1;  // 每次故障恢复递增
+end
+
+// [V4修复 LT-10] 内部retrain脉冲生成: M_FAULT->M_IDLE转换时产生单周期脉冲
+// 用于复位所有子模块的bitslip_cnt/lane_align_done/lane_offset等脏状态
+always @(posedge clk_div or negedge rst_n) begin
+    if(!rst_n) begin
+        internal_retrain <= 1'b0;
+        internal_retrain_prev <= 1'b0;
+    end else begin
+        internal_retrain_prev <= internal_retrain;
+        // M_FAULT恢复到M_IDLE时生成retrain脉冲
+        if(m_curr_state == M_FAULT && m_next_state == M_IDLE)
+            internal_retrain <= 1'b1;
+        else
+            internal_retrain <= 1'b0;
+    end
 end
 
 // M_FAULT恢复等待计数器（N-07修复：避免永久死锁）

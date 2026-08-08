@@ -5,6 +5,8 @@
 //   - 24bit并行数据处理，训练序列生成，帧调度，心跳插入，XPM FIFO缓存
 //   - 例化3路OSERDESE2串行化 + OBUFDS差分输出
 //   - 串行/并行时钟由顶层外部输入
+//   - [V4修复] LT-01: 增加tx_retrain_req输入, 重训练时重置train_phase_cnt
+//   - [V4修复] LT-05: 同步重训练重启, 确保TX/RX同时从阶段0开始
 // Source: Xilinx 7系列FPGA双向3路数据LVDS通信设计文档_V1.0  §4.1
 //============================================================================
 module lvds_tx_channel #(
@@ -24,6 +26,8 @@ module lvds_tx_channel #(
     input  wire ctrl_frame_send,
     input  wire [7:0] ctrl_frame_type,
     input  wire [7:0] ctrl_frame_payload,
+    // [V4修复 LT-01/LT-05] TX重训练请求, 同步重启训练阶段计数
+    input  wire tx_retrain_req,
     // 用户数据接口 (24bit = 3*8bit)
     input  wire [LANE_CNT*DATA_WIDTH-1:0] tx_data_in,
     input  wire                            tx_data_valid,
@@ -56,10 +60,17 @@ localparam HEARTBEAT_CNT_MAX = (CLK_FREQ / 1000) * HEARTBEAT_MS;
 localparam HEARTBEAT_PAYLOAD_LEN = 8'd2;
 
 // 两阶段训练：阶段0发0x55做延迟校准，阶段1发0xB5做字对齐
+// [V4修复 LT-01] 增加阶段切换裕量, 确保RX有足够时间完成延迟校准
 localparam TRAIN_CALIB_DURATION = 16'd4000; // 延迟校准约需576周期，4000提供充足余量
+localparam TRAIN_ALIGN_DURATION = 16'd8000; // V4: 字对齐阶段持续时间
 reg [15:0] train_phase_cnt;
 wire       train_phase; // 0=延迟校准阶段(0x55), 1=字对齐阶段(0xB5)
 assign train_phase = (train_phase_cnt >= TRAIN_CALIB_DURATION);
+
+// [V4修复 LT-05] tx_retrain_req上升沿检测
+reg tx_retrain_req_d;
+wire tx_retrain_pulse;
+assign tx_retrain_pulse = tx_retrain_req & ~tx_retrain_req_d;
 
 // tx_ready 门控
 assign tx_ready = ~fifo_full && ~train_en;
@@ -108,30 +119,42 @@ xpm_fifo_sync #(
 );
 
 // 心跳生成逻辑
+// [V4修复 LT-05] tx_retrain_req到达时重置train_phase_cnt, 确保TX/RX同步重启
 always @(posedge clk_div or negedge rst_n) begin
     if(!rst_n) begin
         heartbeat_timer <= 32'd0;
         heartbeat_cnt   <= 16'd0;
         heartbeat_pending <= 1'b0;
         train_phase_cnt <= 16'd0;
-    end else if(train_en) begin
-        // 训练阶段计数：阶段0(0x55)持续TRAIN_CALIB_DURATION后切换到阶段1(0xB5)
-        if(train_phase_cnt < TRAIN_CALIB_DURATION)
-            train_phase_cnt <= train_phase_cnt + 1'b1;
-        // 训练期间不产生心跳
-        heartbeat_timer <= 32'd0;
-        heartbeat_cnt   <= 16'd0;
-        heartbeat_pending <= 1'b0;
+        tx_retrain_req_d <= 1'b0;
     end else begin
-        train_phase_cnt <= 16'd0; // 退出训练时重置，下次训练重新从阶段0开始
-        heartbeat_timer <= heartbeat_timer + 1'b1;
-        if(heartbeat_timer >= HEARTBEAT_CNT_MAX) begin
-            heartbeat_timer   <= 32'd0;
-            heartbeat_pending <= 1'b1;
-            heartbeat_cnt     <= heartbeat_cnt + 1'b1;
-        end
-        if(tx_curr_state == TX_CHECKSUM && tx_next_state == TX_IDLE && tx_type_sel == TYPE_HB) begin
+        tx_retrain_req_d <= tx_retrain_req;
+
+        // [V4修复 LT-05] 重训练脉冲到达时, 强制重置训练阶段计数
+        if(tx_retrain_pulse) begin
+            train_phase_cnt <= 16'd0;
+            heartbeat_timer <= 32'd0;
+            heartbeat_cnt   <= 16'd0;
             heartbeat_pending <= 1'b0;
+        end else if(train_en) begin
+            // 训练阶段计数：阶段0(0x55)持续TRAIN_CALIB_DURATION后切换到阶段1(0xB5)
+            if(train_phase_cnt < (TRAIN_CALIB_DURATION + TRAIN_ALIGN_DURATION))
+                train_phase_cnt <= train_phase_cnt + 1'b1;
+            // 训练期间不产生心跳
+            heartbeat_timer <= 32'd0;
+            heartbeat_cnt   <= 16'd0;
+            heartbeat_pending <= 1'b0;
+        end else begin
+            train_phase_cnt <= 16'd0; // 退出训练时重置，下次训练重新从阶段0开始
+            heartbeat_timer <= heartbeat_timer + 1'b1;
+            if(heartbeat_timer >= HEARTBEAT_CNT_MAX) begin
+                heartbeat_timer   <= 32'd0;
+                heartbeat_pending <= 1'b1;
+                heartbeat_cnt     <= heartbeat_cnt + 1'b1;
+            end
+            if(tx_curr_state == TX_CHECKSUM && tx_next_state == TX_IDLE && tx_type_sel == TYPE_HB) begin
+                heartbeat_pending <= 1'b0;
+            end
         end
     end
 end
