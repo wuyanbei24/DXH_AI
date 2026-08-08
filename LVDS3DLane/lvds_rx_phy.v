@@ -29,6 +29,7 @@ module lvds_rx_phy #(
     input  wire ref_clk_200m,
     // 控制接口
     input  wire retrain_req,
+    input  wire heartbeat_err,  // 链路层心跳超时指示
     // 并行数据输出（同步24bit）
     output wire [LANE_CNT*DATA_WIDTH-1:0] rx_data,
     output wire                            rx_data_valid,
@@ -73,9 +74,7 @@ reg [15:0] fault_wait_timer;
 reg        internal_retrain;
 reg        internal_retrain_prev;
 
-// [V4修复 LT-12] 运行时信号质量监测
-reg [15:0] runtime_bad_cnt;
-localparam RUNTIME_BAD_THRESHOLD = 16'd1000; // 连续1000拍非0xB5则触发retrain
+
 
 localparam LOCK_CHECK_CYCLES = 16'd5000;
 localparam [15:0] LOCK_VOTE_THRESHOLD = 16'd4000; // 80%通过率要求
@@ -93,35 +92,19 @@ u_ibufds_clk (
 );
 
 
-wire clk_out1_400   ;
-wire clk_out2_125   ;
-wire clk_out3_125   ;
 wire clk_out4_100   ;
-wire clk_out5_50    ;
-wire clk_out6_200   ;
-wire clk_out7_10    ;
 wire mmcm_lock      ;
 
-// [V4修复 LT-02] 使用mfpga_clk_ip输出400MHz(serial)+100MHz(parallel), 满足DDR 8:1的4:1时钟比
-mfpga_clk_ip lvds_clkdiv_gen 
- (
-  // Clock out ports
-    .clk_out1(clk_out1_400   ),  // 400MHz serial clock for ISERDESE2 CLK
-    .clk_out2(clk_out2_125   ),
-    .clk_out3(clk_out3_125   ),
-    .clk_out4(clk_out4_100   ),  // 100MHz parallel clock for ISERDESE2 CLKDIV
-    .clk_out5(clk_out5_50    ),
-    .clk_out6(clk_out6_200   ),
-    .clk_out7(clk_out7_10    ),
-  // Status and control signals
-    .locked  (mmcm_lock      ),
- // Clock in ports
-    .clk_in1(clk_ibuf)
- );
+// 输入LVDS时钟400MHz, 通过lvds_rx_pll实现4:1分频输出100MHz
+lvds_rx_pll lvds_clkdiv_gen (
+    .clk_out1(clk_out4_100),  // 100MHz parallel clock
+    .locked  (mmcm_lock),
+    .clk_in1 (clk_ibuf)       // 400MHz from IBUFDS
+);
 
-// [V4修复 LT-02] clk_bufio使用400MHz, clk_div使用100MHz, 比例4:1满足DDR 8:1
-assign clk_bufio = clk_out1_400;  // 400MHz serial clock
-assign clk_div   = clk_out4_100;  // 100MHz parallel clock
+// clk_bufio直接使用IBUFDS输出的400MHz, clk_div使用PLL输出的100MHz
+assign clk_bufio = clk_ibuf;         // 400MHz serial clock
+assign clk_div   = clk_out4_100;     // 100MHz parallel clock
 
 // BUFIO u_bufio_clk (.I(clk_ibuf), .O(clk_bufio));
 // BUFR #(.BUFR_DIVIDE("4"), 
@@ -158,6 +141,7 @@ generate
             .clk_div(clk_div),
             .ref_clk_200m(ref_clk_200m),
             .retrain_req(retrain_req | internal_retrain),  // V4: 合并外部和内部retrain
+            .training_mode(training_mode),
             .rx_data(lane_data[lane_idx]),
             .lane_align_done(lane_align_done[lane_idx]),
             .lane_calib_err(lane_calib_err[lane_idx]),
@@ -168,6 +152,9 @@ endgenerate
 
 assign all_lane_done = &lane_align_done;
 assign any_lane_err = |lane_calib_err;
+
+// 训练模式标志: M_NORMAL之外均为训练阶段
+wire training_mode = (m_curr_state != M_NORMAL);
 
 // 通道间相位对齐模块
 lane_deskew #(
@@ -206,8 +193,8 @@ always @(*) begin
         M_LANE_DESKEW: if(deskew_done) m_next_state = M_LOCK_CHECK;
         M_LOCK_CHECK:  if(lock_timer >= LOCK_CHECK_CYCLES)
                            m_next_state = (lock_match_cnt >= LOCK_VOTE_THRESHOLD) ? M_NORMAL : M_FAULT;
-        // [V4修复 LT-12] M_NORMAL: 增加运行时信号质量监测
-        M_NORMAL:      if(retrain_req | (runtime_bad_cnt >= RUNTIME_BAD_THRESHOLD)) m_next_state = M_IDLE;
+        // C-02修复: 使用心跳超时作为链路健康指标
+        M_NORMAL:      if(retrain_req | heartbeat_err) m_next_state = M_IDLE;
         // [V4修复 LT-10] M_FAULT: 恢复时生成内部retrain脉冲
         M_FAULT:       if(fault_wait_timer >= FAULT_RECOVERY_CYCLES) m_next_state = M_IDLE;
         default:       m_next_state = M_IDLE;
@@ -220,7 +207,6 @@ always @(posedge clk_div or negedge rst_n) begin
         align_err <= 1'b0;
         lock_timer <= 16'd0;
         lock_match_cnt <= 16'd0;
-        runtime_bad_cnt <= 16'd0;
     end else begin
         case(m_curr_state)
             M_IDLE: begin
@@ -228,7 +214,6 @@ always @(posedge clk_div or negedge rst_n) begin
                 align_err <= 1'b0;
                 lock_timer <= 16'd0;
                 lock_match_cnt <= 16'd0;
-                runtime_bad_cnt <= 16'd0;
             end
             M_CALIB: begin
                 phy_ready <= 1'b0;
@@ -245,23 +230,13 @@ always @(posedge clk_div or negedge rst_n) begin
                     lock_match_cnt <= lock_match_cnt + 1'b1;
                 end
             end
-            // [V4修复 LT-12] M_NORMAL: 运行时信号质量监测
             M_NORMAL: begin
                 phy_ready <= 1'b1;
                 align_err <= 1'b0;
-                // 监测3路数据是否仍为0xB5训练模式
-                if(deskew_data_out[7:0] == 8'hB5 &&
-                   deskew_data_out[15:8] == 8'hB5 &&
-                   deskew_data_out[23:16] == 8'hB5) begin
-                    runtime_bad_cnt <= 16'd0;
-                end else begin
-                    runtime_bad_cnt <= runtime_bad_cnt + 1'b1;
-                end
             end
             M_FAULT: begin
                 phy_ready <= 1'b0;
                 align_err <= 1'b1;
-                runtime_bad_cnt <= 16'd0;
             end
             default: ;
         endcase

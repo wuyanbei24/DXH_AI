@@ -44,8 +44,10 @@ module lvds_rx_channel #(
 wire [LANE_CNT*DATA_WIDTH-1:0] phy_data;
 wire phy_valid;
 wire retrain_req_inner;
+wire heartbeat_err_inner;
 
 assign retrain_trigger = retrain_req_inner;
+assign heartbeat_err = heartbeat_err_inner;
 
 // [V4修复 LT-09] retrain_ack等待phy_ready下降后重新上升
 // 确认物理层已完全重启并重新进入校准状态
@@ -82,6 +84,7 @@ lvds_rx_phy #(
     .lvds_data_p(lvds_data_p), .lvds_data_n(lvds_data_n),
     .ref_clk_200m(ref_clk_200m),
     .retrain_req(retrain_req | retrain_req_inner),
+    .heartbeat_err(heartbeat_err_inner),
     .rx_data(phy_data), .rx_data_valid(phy_valid),
     .phy_ready(phy_ready), .align_err(align_err),
     .clk_div(clk_div)
@@ -98,7 +101,7 @@ lvds_rx_link #(
     .rx_data_out(rx_data_out), .rx_data_out_valid(rx_data_valid),
     .retrain_req(retrain_req_inner),
     .retrain_ack(retrain_ack_from_phy),
-    .link_up(link_up), .heartbeat_err(heartbeat_err),
+    .link_up(link_up), .heartbeat_err(heartbeat_err_inner),
     .heartbeat_recv_cnt(),
     .ctrl_frame_valid(ctrl_frame_valid),
     .ctrl_frame_type(ctrl_frame_type),

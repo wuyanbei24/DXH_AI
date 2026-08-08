@@ -27,6 +27,7 @@ module lvds_rx_lane_phy #(
     input  wire ref_clk_200m,
     // 控制接口
     input  wire retrain_req,
+    input  wire training_mode,  // 高=训练中, 低=数据模式(禁用码型监测)
     // 并行数据输出
     output wire [DATA_WIDTH-1:0] rx_data,
     // 状态输出
@@ -337,8 +338,8 @@ always @(*) begin
         end
         // [V4修复 LT-08] W_DONE: 对齐成功后保持, 仅retrain/err/信号恶化时退出
         W_DONE: begin
-            if(bad_word_cnt >= BAD_WORD_THRESHOLD)
-                w_next_state = W_IDLE;  // 信号恶化, 重新对齐
+            if(training_mode && bad_word_cnt >= BAD_WORD_THRESHOLD)
+                w_next_state = W_IDLE;  // 训练期间信号恶化, 重新对齐
         end
         default: w_next_state = W_IDLE;
     endcase
@@ -382,16 +383,19 @@ always @(posedge clk_div or negedge rst_n) begin
                     align_check_cnt <= 8'd0;
                 end
             end
-            // [V4修复 LT-08] W_DONE: 持续监测信号质量
+            // [V4修复 LT-08] W_DONE: 仅训练期间监测信号质量
             W_DONE: begin
-                if(iserdes_q == 8'hB5) begin
-                    bad_word_cnt <= 8'd0;
+                if(training_mode) begin
+                    if(iserdes_q == 8'hB5) begin
+                        bad_word_cnt <= 8'd0;
+                    end else begin
+                        bad_word_cnt <= bad_word_cnt + 1'b1;
+                    end
+                    if(bad_word_cnt >= BAD_WORD_THRESHOLD) begin
+                        lane_align_done <= 1'b0;
+                    end
                 end else begin
-                    bad_word_cnt <= bad_word_cnt + 1'b1;
-                end
-                // 信号恶化时清零lane_align_done, 通知上游
-                if(bad_word_cnt >= BAD_WORD_THRESHOLD) begin
-                    lane_align_done <= 1'b0;
+                    bad_word_cnt <= 8'd0;
                 end
             end
             default: ;
