@@ -44,10 +44,10 @@
 ### LT-02: 时钟恢复比不满足DDR 8:1的4:1要求
 **文件**: `lvds_rx_phy.v`  
 **问题**: 原设计使用lvds_rx_pll(MMCM)从200MHz LVDS时钟输出100MHz, 但ISERDESE2 DDR 8:1需要CLK:CLKDIV=4:1, 当前200/100=2:1不足。clk_bufio直接用clk_ibuf(200MHz)。  
-**修复**: 
-- 改用 `mfpga_clk_ip` IP核, 输出400MHz(clk_out1)和100MHz(clk_out4)
-- `clk_bufio = clk_out1_400` (400MHz串行时钟)
-- `clk_div = clk_out4_100` (100MHz并行时钟)
+**修复** (V5最终方案): 
+- 输入LVDS时钟为400MHz, 使用 `lvds_rx_pll` 实现4:1分频输出100MHz
+- `clk_bufio` 直接使用IBUFDS输出的400MHz原始时钟
+- `clk_div` 使用PLL输出的100MHz
 - 时钟比 400:100 = 4:1, 满足DDR 8:1要求
 
 ### LT-03: lane_deskew for-loop多次赋值
@@ -183,14 +183,14 @@
 
 | 文件 | 修复的LT编号 | 主要改动 |
 |------|-------------|----------|
-| `lvds_rx_lane_phy.v` | LT-06, LT-08, LT-11 | 新增D_SETTLE/W_DONE状态, scan_done上升沿清bitslip_cnt, 信号质量监测, IDELAY稳定等待, 采样容错改进 |
+| `lvds_rx_lane_phy.v` | LT-06, LT-08, LT-11, C-01 | D_SETTLE/W_DONE状态, scan_done清bitslip_cnt, 信号质量监测(training_mode门控), IDELAY稳定等待 |
 | `lane_deskew.v` | LT-03, LT-13, LT-17 | 首次匹配锁定(局部变量), 周期性重校验, deskew_done前输出全零 |
-| `lvds_rx_phy.v` | LT-02, LT-10, LT-12, LT-16 | mfpga_clk_ip 400/100MHz, internal_retrain脉冲, runtime_bad_cnt, fault_retry_cnt |
+| `lvds_rx_phy.v` | LT-02, LT-10, LT-12→C-02, LT-16 | lvds_rx_pll 400→100MHz, internal_retrain脉冲, heartbeat_err替代runtime_bad_cnt, training_mode |
 | `lvds_link_manager.v` | LT-04, LT-05, LT-14, LT-15 | SLAVE_ACK反向确认, tx_retrain_pulse, generate-if, link_up门控 |
 | `lvds_bidirectional_top.v` | LT-07 | 握制型脉冲同步器, tx_retrain_pulse CDC |
 | `lvds_tx_channel.v` | LT-01, LT-05 | tx_retrain_req输入, 重训练时重置train_phase_cnt |
 | `lvds_rx_link.v` | LT-09, LT-14 | retrain_req保持到phy_ready下降, 心跳仅link_up后启用 |
-| `lvds_rx_channel.v` | LT-09 | retrain_ack等待phy_ready下降-上升序列 |
+| `lvds_rx_channel.v` | LT-09, C-02 | retrain_ack等待phy_ready下降-上升序列, heartbeat_err路由到phy |
 
 ---
 
@@ -210,3 +210,38 @@
 ### 根因3: CDC设计不完整
 - **LT-07**: 握制型脉冲同步器替代简单2级FF
 - **LT-09**: retrain_req保持到物理层确认重启
+
+---
+
+## V5 补充修复（2026-08-08）
+
+在 V4 修复基础上，通过对齐设计深度审查发现并修复以下问题：
+
+### C-01: W_DONE 信号质量监测在数据模式下误触发（Critical）
+**文件**: `lvds_rx_lane_phy.v`, `lvds_rx_phy.v`  
+**问题**: W_DONE 状态持续检测 `iserdes_q == 0xB5`，链路切换到数据模式后所有数据 ≠ 0xB5，32 拍后必然触发 lane_align_done 清零，导致无限重训练。  
+**修复**: 方案 A — 增加 `training_mode` 输入信号
+- `lvds_rx_lane_phy.v`: 新增 `training_mode` 端口，W_DONE 仅在 `training_mode=1` 时启用码型监测；数据模式下 `bad_word_cnt` 清零冻结
+- `lvds_rx_phy.v`: 生成 `wire training_mode = (m_curr_state != M_NORMAL)` 并连接到各 lane_phy
+
+### C-02: M_NORMAL 运行时 0xB5 监测在数据模式下必然误报（Critical）
+**文件**: `lvds_rx_phy.v`, `lvds_rx_channel.v`  
+**问题**: M_NORMAL 状态检测 3 路数据是否为 0xB5，正常数据必然不匹配，`runtime_bad_cnt` 在 1000 拍后触发重训练。  
+**修复**: 改用心跳超时作为链路健康指标
+- `lvds_rx_phy.v`: 新增 `heartbeat_err` 输入端口，M_NORMAL 退出条件改为 `retrain_req | heartbeat_err`；移除 `runtime_bad_cnt` 和 `RUNTIME_BAD_THRESHOLD`
+- `lvds_rx_channel.v`: 新增 `heartbeat_err_inner` 线网，从 `u_link.heartbeat_err` 接入并连接到 `u_phy.heartbeat_err` 和外部端口
+
+### PLL 时钟方案更新
+**文件**: `lvds_rx_phy.v`  
+**变更**: 输入 LVDS 时钟为 400MHz，改用 `lvds_rx_pll` 实现 4:1 分频
+- 移除 `mfpga_clk_ip`（7 路输出），改用 `lvds_rx_pll`（400MHz → 100MHz 单路输出）
+- `clk_bufio` 直接使用 IBUFDS 输出的 400MHz 原始时钟
+- `clk_div` 使用 PLL 输出的 100MHz
+
+### V5 涉及文件
+
+| 文件 | 修复项 | 主要改动 |
+|------|--------|----------|
+| `lvds_rx_lane_phy.v` | C-01 | 新增 `training_mode` 端口, W_DONE 监测受 training_mode 门控 |
+| `lvds_rx_phy.v` | C-01, C-02, PLL | 新增 `heartbeat_err`/`training_mode`, 移除 runtime_bad_cnt, 改用 lvds_rx_pll |
+| `lvds_rx_channel.v` | C-02 | 新增 heartbeat_err_inner 路由到 u_phy 和外部端口 |
