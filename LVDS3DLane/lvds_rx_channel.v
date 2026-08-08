@@ -13,7 +13,8 @@ module lvds_rx_channel #(
     parameter SAMPLE_CNT  = 16,
     parameter MIN_WIN_SIZE= 4,
     parameter HEARTBEAT_TIMEOUT_CNT = 20'd600000,
-    parameter MAX_ERR_CNT = 4'd10
+    parameter MAX_ERR_CNT = 4'd10,
+    parameter SIM_BYPASS  = 0  // V8: 仿真旁路BUFIO/BUFR
 )(
     input  wire rst_n,
     // LVDS差分输入
@@ -23,6 +24,9 @@ module lvds_rx_channel #(
     input  wire [LANE_CNT-1:0] lvds_data_n,
     // IDELAY参考时钟
     input  wire ref_clk_200m,
+    // V8: 仿真旁路时钟输入
+    input  wire clk_ser_ext,  // SIM_BYPASS=1: TX同源400MHz
+    input  wire clk_div_ext,  // SIM_BYPASS=1: TX同源100MHz
     // 重训练控制
     input  wire retrain_req,
     // 用户数据输出
@@ -77,7 +81,8 @@ lvds_rx_phy #(
     .LANE_CNT(LANE_CNT),
     .DELAY_STEPS(DELAY_STEPS),
     .SAMPLE_CNT(SAMPLE_CNT),
-    .MIN_WIN_SIZE(MIN_WIN_SIZE)
+    .MIN_WIN_SIZE(MIN_WIN_SIZE),
+    .SIM_BYPASS(SIM_BYPASS)  // V8: 传递仿真旁路参数
 ) u_phy (
     .rst_n(rst_n),
     .lvds_clk_p(lvds_clk_p), .lvds_clk_n(lvds_clk_n),
@@ -85,6 +90,8 @@ lvds_rx_phy #(
     .ref_clk_200m(ref_clk_200m),
     .retrain_req(retrain_req | retrain_req_inner),
     .heartbeat_err(heartbeat_err_inner),
+    .clk_ser_ext(clk_ser_ext),  // V8: TX同源时钟
+    .clk_div_ext(clk_div_ext),  // V8: TX同源时钟
     .rx_data(phy_data), .rx_data_valid(phy_valid),
     .phy_ready(phy_ready), .align_err(align_err),
     .clk_div(clk_div)

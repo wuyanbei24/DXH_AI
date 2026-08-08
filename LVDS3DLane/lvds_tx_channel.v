@@ -51,6 +51,11 @@ wire [LANE_CNT*DATA_WIDTH-1:0] fifo_dout;
 wire        fifo_empty;
 wire        fifo_full;
 wire [8:0]  fifo_data_cnt;
+// [V13修复] 自带FIFO占用计数器: 不依赖XPM wr_data_count(此版本USE_ADV_FEATURES位编码
+// 无法可靠开启data_count, 实测fifo_data_cnt恒0→payload_len=0→USR帧永远len=0→用户数据0交付)。
+// 同步于clk_div: 写成功(tx_data_valid&&!fifo_full)时+1, 读成功(fifo_rd_en&&!fifo_empty)时-1,
+// 精确反映逻辑占用, 调度器据此生成payload_len=fifo_occ_cnt*3(封顶MAX_PAYLOAD)。
+reg  [8:0]  fifo_occ_cnt;
 wire [LANE_CNT-1:0] s_data_out;
 wire s_clk_out;
 
@@ -89,6 +94,11 @@ xpm_fifo_sync #(
     .READ_DATA_WIDTH     (LANE_CNT*DATA_WIDTH),
     .READ_MODE           ("fwft"),
     // .SIM_ASSERT_CHK      (0),
+    // [V13修复] USE_ADV_FEATURES 回退为"0000"。原设计依赖XPM wr_data_count(fifo_data_cnt)给调度器
+    // 提供FIFO占用, 但本机XPM版本对"0000"/"0011"/"1000"编码均未能可靠开启data_count特性
+    // (实测fifo_data_cnt恒为0, 而fifo_empty正确反映"有数据" → 矛盾), 导致USR帧永远len=0。
+    // V13改为在lvds_tx_channel内用自带fifo_occ_cnt(同步clk_div的±1计数器)精确跟踪逻辑占用,
+    // 彻底摆脱对XPM高级特性的依赖, payload_len=fifo_occ_cnt*3(封顶MAX_PAYLOAD), 用户数据真实下发。
     .USE_ADV_FEATURES    ("0000"),
     .WAKEUP_TIME         (0),
     .WRITE_DATA_WIDTH    (LANE_CNT*DATA_WIDTH),
@@ -117,6 +127,23 @@ xpm_fifo_sync #(
     .sbiterr        (),
     .dbiterr        ()
 );
+
+// [V13修复] 自带FIFO占用计数器 (同步于clk_div, 与XPM FIFO同源时钟)
+// 写成功条件: 本拍wr_en(tx_data_valid)有效且写前非满(!fifo_full) → FIFO实际多1字
+// 读成功条件: 本拍rd_en(fifo_rd_en)有效且读前非空(!fifo_empty) → FIFO实际少1字
+// 同时读写时净变化为0。该计数精确对应FIFO逻辑占用, 替代不可靠的XPM wr_data_count。
+always @(posedge clk_div or negedge rst_n) begin
+    if(!rst_n) begin
+        fifo_occ_cnt <= 9'd0;
+    end else begin
+        case ({tx_data_valid && !fifo_full, fifo_rd_en && !fifo_empty})
+            2'b10:   fifo_occ_cnt <= fifo_occ_cnt + 9'd1;   // 仅写
+            2'b01:   fifo_occ_cnt <= fifo_occ_cnt - 9'd1;   // 仅读
+            2'b11:   fifo_occ_cnt <= fifo_occ_cnt;          // 同时读写, 净0
+            default: fifo_occ_cnt <= fifo_occ_cnt;          // 无操作
+        endcase
+    end
+end
 
 // 心跳生成逻辑
 // [V4修复 LT-05] tx_retrain_req到达时重置train_phase_cnt, 确保TX/RX同步重启
@@ -166,24 +193,27 @@ always @(posedge clk_div or negedge rst_n) begin
 end
 
 // 第二段：次态跳转
+// [V5修复] 训练模式下允许控制帧发送, 解决S_WAIT_PEER阶段握手帧无法传输的问题
+// 原设计 train_en=1 时强制TX_IDLE, 导致SLAVE_READY/MASTER_ACK/SLAVE_ACK帧无法发送
+// [V6修复 Bug F] 原V5修复的 if(train_en && !ctrl_frame_send) 会中断正在发送的帧
+//   ctrl_frame_send是单周期脉冲, 下一周期pulse消失后, 即使帧处于TX_SOF_TYPE/TX_LEN等
+//   中间状态, 状态机也被强制回到TX_IDLE, 帧只发了第1个字节(SOF), RX永远无法解析完整帧
+//   修复: train_en仅在TX_IDLE状态阻止非控制帧启动, 不中断已开始的帧传输
 always @(*) begin
     tx_next_state = tx_curr_state;
-    if(train_en) begin
-        tx_next_state = TX_IDLE;
-    end else begin
-        case(tx_curr_state)
-            TX_IDLE: begin
-                if(ctrl_frame_send)          tx_next_state = TX_SOF_TYPE;
-                else if(~fifo_empty)         tx_next_state = TX_SOF_TYPE;
-                else if(heartbeat_pending)   tx_next_state = TX_SOF_TYPE;
-            end
-            TX_SOF_TYPE: tx_next_state = TX_LEN;
-            TX_LEN:      tx_next_state = (payload_len == 8'd0) ? TX_CHECKSUM : TX_PAYLOAD;
-            TX_PAYLOAD:  tx_next_state = (payload_cnt + LANE_CNT >= payload_len) ? TX_CHECKSUM : TX_PAYLOAD;
-            TX_CHECKSUM: tx_next_state = TX_IDLE;
-            default:     tx_next_state = TX_IDLE;
-        endcase
-    end
+    case(tx_curr_state)
+        TX_IDLE: begin
+            if(ctrl_frame_send)          tx_next_state = TX_SOF_TYPE;
+            else if(train_en)            tx_next_state = TX_IDLE;  // V6: 训练模式只允许控制帧启动
+            else if(~fifo_empty)         tx_next_state = TX_SOF_TYPE;
+            else if(heartbeat_pending)   tx_next_state = TX_SOF_TYPE;
+        end
+        TX_SOF_TYPE: tx_next_state = TX_LEN;
+        TX_LEN:      tx_next_state = (payload_len == 8'd0) ? TX_CHECKSUM : TX_PAYLOAD;
+        TX_PAYLOAD:  tx_next_state = (payload_cnt + LANE_CNT >= payload_len) ? TX_CHECKSUM : TX_PAYLOAD;
+        TX_CHECKSUM: tx_next_state = TX_IDLE;
+        default:     tx_next_state = TX_IDLE;
+    endcase
 end
 
 // 第三段：输出与数据控制
@@ -200,17 +230,20 @@ always @(posedge clk_div or negedge rst_n) begin
             TX_IDLE: begin
                 payload_cnt <= 8'd0;
                 checksum_reg <= 8'd0;
-                if(train_en) begin
-                    tx_type_sel <= 8'd0;
-                    payload_len <= 8'd0;
-                end else if(ctrl_frame_send) begin
+                // [V5修复] 控制帧优先, 即使在训练模式也允许发送
+                if(ctrl_frame_send) begin
                     tx_type_sel <= ctrl_frame_type;
                     payload_len <= 8'd1;
+                    $display("[%0t] TX: ctrl_frame_send received! type=%h payload_len=1 train_en=%b", $time, ctrl_frame_type, train_en);
+                end else if(train_en) begin
+                    tx_type_sel <= 8'd0;
+                    payload_len <= 8'd0;
                 end else if(~fifo_empty) begin
                     tx_type_sel <= TYPE_USR;
-                    payload_len <= (fifo_data_cnt*LANE_CNT > MAX_PAYLOAD) 
+                    // [V13修复] 用自带fifo_occ_cnt替代XPM fifo_data_cnt(后者在此版本恒0)
+                    payload_len <= (fifo_occ_cnt*LANE_CNT > MAX_PAYLOAD)
                        ? (MAX_PAYLOAD / LANE_CNT) * LANE_CNT  // 向下取整
-                       : fifo_data_cnt[7:0] * LANE_CNT;
+                       : fifo_occ_cnt[7:0] * LANE_CNT;
                 end else if(heartbeat_pending) begin
                     tx_type_sel <= TYPE_HB;
                     payload_len <= HEARTBEAT_PAYLOAD_LEN;
@@ -246,14 +279,21 @@ always @(posedge clk_div or negedge rst_n) begin
 end
 
 // 发送数据多路选择
+// [V5修复] 训练模式下处于帧发送状态时输出帧数据, 而非训练码
 always @(*) begin
-    if(train_en) begin
-        // 两阶段训练：阶段0发0x55(延迟校准)，阶段1发0xB5(字对齐+锁定检查)
+    if(train_en && tx_curr_state == TX_IDLE) begin
+        // 训练模式IDLE状态: 输出训练码
         tx_data_mux = train_phase ? {LANE_CNT{8'hB5}} : {LANE_CNT{8'h55}};
     end else begin
         case(tx_curr_state)
-            TX_SOF_TYPE: tx_data_mux = {tx_type_sel, FRAME_SOF2, FRAME_SOF1};
-            TX_LEN:      tx_data_mux = {16'd0, payload_len};
+            TX_SOF_TYPE: begin
+                tx_data_mux = {tx_type_sel, FRAME_SOF2, FRAME_SOF1};
+                $display("[%0t] TX_SOF: data_mux=%h type=%h", $time, {tx_type_sel, FRAME_SOF2, FRAME_SOF1}, tx_type_sel);
+            end
+            TX_LEN: begin
+                tx_data_mux = {16'd0, payload_len};
+                $display("[%0t] TX_LEN: data_mux=%h len=%0d", $time, {16'd0, payload_len}, payload_len);
+            end
             TX_PAYLOAD: begin
                 case(tx_type_sel)
                     TYPE_USR: tx_data_mux = fifo_dout;

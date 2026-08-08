@@ -55,11 +55,13 @@ reg [2:0] d_next_state;
 
 // 字对齐状态机
 // [V4修复 LT-06/LT-08] 增加W_DONE状态, 对齐成功后保持
+// [V6修复 Bug B] 增加W_WAIT_PHASE状态, 等待TX从0x55切换到0xB5再启动BITSLIP
 localparam W_IDLE     = 3'd0,
            W_BITSLIP  = 3'd1,
            W_WAIT     = 3'd2,
            W_CHECK    = 3'd3,
-           W_DONE     = 3'd4;   // V4: 对齐成功后保持状态
+           W_DONE     = 3'd4,  // V4: 对齐成功后保持状态
+           W_WAIT_PHASE = 3'd5; // V6: 等待TX切换到0xB5码型
 reg [2:0] w_curr_state;
 reg [2:0] w_next_state;
 
@@ -99,6 +101,13 @@ localparam BAD_WORD_THRESHOLD = 8'd32; // 连续32拍非0xB5则判定信号恶�
 
 // [V4修复 LT-06] scan_done上升沿检测
 reg scan_done_prev;
+
+// [V6修复 Bug A] 延迟扫描完成标志, 阻止D_DONE后立即重启扫描
+reg d_scan_complete;
+
+// [V6修复 Bug B] 字对齐等待TX切换到0xB5的计数器
+reg [15:0] align_wait_cnt;
+localparam ALIGN_WAIT_CYCLES = 16'd4000; // 与TX的TRAIN_CALIB_DURATION匹配
 
 
 
@@ -236,7 +245,7 @@ end
 always @(*) begin
     d_next_state = d_curr_state;
     case(d_curr_state)
-        D_IDLE:      if(~lane_align_done & ~retrain_req) d_next_state = D_SET_DELAY;
+        D_IDLE:      if(~lane_align_done & ~retrain_req & ~d_scan_complete) d_next_state = D_SET_DELAY;
         D_SET_DELAY: d_next_state = D_SETTLE;
         D_SETTLE:    if(settle_cnt >= SETTLE_CYCLES) d_next_state = D_WAIT;  // V4: 等待IDELAY稳定
         D_WAIT:      if(sample_cnt >= SAMPLE_CNT) d_next_state = D_SAMPLE;  // V4: 修正为>=SAMPLE_CNT, 采样16次
@@ -262,6 +271,7 @@ always @(posedge clk_div or negedge rst_n) begin
         scan_done <= 1'b0;
         best_delay_val <= 5'd0;
         settle_cnt <= 3'd0;
+        d_scan_complete <= 1'b0;  // [V6修复 Bug A]
     end else begin
         delay_ce <= 1'b0;
         delay_ld <= 1'b0;
@@ -295,21 +305,29 @@ always @(posedge clk_div or negedge rst_n) begin
             // [V4修复 LT-11] D_SAMPLE: 统计总错误数判定, 而非先错即弃
             D_SAMPLE: begin
                 valid_window[scan_step] <= (sample_err_cnt <= SAMPLE_ERR_TOLERANCE);
+                // [V5-DEBUG] 跟踪每个tap的采样结果
+                $display("[%0t] LANE_PHY D_SAMPLE: scan_step=%0d iserdes_q=%h sample_err_cnt=%0d valid=%b", $time, scan_step, iserdes_q, sample_err_cnt, (sample_err_cnt <= SAMPLE_ERR_TOLERANCE));
                 scan_step <= scan_step + 1'b1;
             end
             D_CALC_WIN: begin
                 best_delay_val <= delay_win_valid ? best_delay_comb : 5'd0;
+                // [V5-DEBUG] 打印校准结果
+                $display("[%0t] LANE_PHY D_CALC_WIN: win_valid=%b best_delay=%0d valid_window=%h", $time, delay_win_valid, best_delay_comb, valid_window);
             end
             D_DONE: begin
                 scan_done <= 1'b1;
                 delay_cnt_val <= best_delay_val;
                 delay_ld <= 1'b1;
+                d_scan_complete <= 1'b1;  // [V6修复 Bug A] 标记扫描完成, 阻止重启
+                // [V5-DEBUG] 打印最终延迟值
+                $display("[%0t] LANE_PHY D_DONE: best_delay_val=%0d", $time, best_delay_val);
             end
             default: ;
         endcase
 
         if(retrain_req) begin
             scan_done <= 1'b0;
+            d_scan_complete <= 1'b0;  // [V6修复 Bug A] retrain时清除, 允许重新扫描
         end
     end
 end
@@ -323,7 +341,10 @@ end
 always @(*) begin
     w_next_state = w_curr_state;
     case(w_curr_state)
-        W_IDLE:    if(scan_done & ~lane_calib_err) w_next_state = W_BITSLIP;
+        W_IDLE:    if(scan_done & ~lane_calib_err) w_next_state = W_WAIT_PHASE;  // V6: 先等待TX切换码型
+        // [V6修复 Bug B] W_WAIT_PHASE: 等待TX从0x55切换到0xB5后再开始BITSLIP
+        // 否则BITSLIP会在TX仍发0x55时启动, 8次尝试全部失败
+        W_WAIT_PHASE: if(align_wait_cnt >= ALIGN_WAIT_CYCLES) w_next_state = W_BITSLIP;
         W_BITSLIP: w_next_state = W_WAIT;
         W_WAIT:    if(bitslip_wait >= BITSLIP_WAIT_CYCLES) w_next_state = W_CHECK;
         W_CHECK: begin
@@ -354,6 +375,7 @@ always @(posedge clk_div or negedge rst_n) begin
         bitslip_cnt <= 4'd0;
         lane_align_done <= 1'b0;
         bad_word_cnt <= 8'd0;
+        align_wait_cnt <= 16'd0;  // V6: 复位等待计数器
     end else begin
         bitslip_req <= 1'b0;
 
@@ -362,9 +384,14 @@ always @(posedge clk_div or negedge rst_n) begin
                 align_check_cnt <= 8'd0;
                 bitslip_wait <= 4'd0;
                 bad_word_cnt <= 8'd0;
+                align_wait_cnt <= 16'd0;  // V6: 复位等待计数器
                 // [V4修复 LT-06] bitslip_cnt在scan_done上升沿清零
                 if(scan_done & ~scan_done_prev)
                     bitslip_cnt <= 4'd0;
+            end
+            // [V6修复 Bug B] W_WAIT_PHASE: 计数等待TX切换到0xB5码型
+            W_WAIT_PHASE: begin
+                align_wait_cnt <= align_wait_cnt + 1'b1;
             end
             W_BITSLIP: begin
                 bitslip_req <= 1'b1;
@@ -403,12 +430,16 @@ always @(posedge clk_div or negedge rst_n) begin
 
         if(align_check_cnt >= 8'd16) begin
             lane_align_done <= 1'b1;
+            // [V6-DEBUG] 打印字对齐完成信息: BITSLIP次数和最佳延迟值
+            if(!lane_align_done)
+                $display("[%0t] LANE_PHY W_DONE: bitslip_cnt=%0d best_delay=%0d iserdes_q=%h", $time, bitslip_cnt, best_delay_val, iserdes_q);
         end
 
         if(retrain_req) begin
             lane_align_done <= 1'b0;
             bitslip_cnt <= 4'd0;
             bad_word_cnt <= 8'd0;
+            align_wait_cnt <= 16'd0;  // V6: 重训练时复位等待计数器
         end
     end
 end

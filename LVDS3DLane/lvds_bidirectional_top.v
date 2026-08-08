@@ -11,7 +11,8 @@ module lvds_bidirectional_top #(
     parameter IS_MASTER = 1,
     parameter DATA_WIDTH = 8,
     parameter LANE_CNT   = 3,
-    parameter CLK_FREQ = 100_000_000
+    parameter CLK_FREQ = 100_000_000,
+    parameter SIM_BYPASS = 0  // V8: 仿真旁路BUFIO/BUFR
 )(
     input  wire clk_ref,
     input  wire ref_clk_200m,
@@ -100,6 +101,7 @@ always @(posedge clk_ref or negedge rst_n) begin
             ctrl_frame_type_hold <= ctrl_frame_type_out;
             ctrl_frame_payload_hold <= ctrl_frame_payload_out;
             ctrl_frame_send_req <= 1'b1;
+            $display("[%0t] CDC %s: ctrl_frame_send_req=1 type_hold=%h", $time, IS_MASTER ? "MST" : "SLV", ctrl_frame_type_out);
         end else if(ack_sync2) begin
             // 收到clk_div域的ACK后清请求
             ctrl_frame_send_req <= 1'b0;
@@ -200,7 +202,8 @@ lvds_tx_channel #(
 // 接收通道
 lvds_rx_channel #(
     .DATA_WIDTH(DATA_WIDTH),
-    .LANE_CNT(LANE_CNT)
+    .LANE_CNT(LANE_CNT),
+    .SIM_BYPASS(SIM_BYPASS)  // V8: 传递仿真旁路参数
 ) u_rx (
     .rst_n(rst_n),
     .lvds_clk_p(rx_lvds_clk_p), 
@@ -208,6 +211,8 @@ lvds_rx_channel #(
     .lvds_data_p(rx_lvds_data_p), 
     .lvds_data_n(rx_lvds_data_n),
     .ref_clk_200m(ref_clk_200m),
+    .clk_ser_ext(clk_ser),  // V8: TX同源400MHz时钟
+    .clk_div_ext(clk_div),  // V8: TX同源100MHz时钟
     .retrain_req(ext_retrain_req | rx_retrain_req),
     .clk_div(rx_clk_div),
     .rx_data_out(user_rx_data),

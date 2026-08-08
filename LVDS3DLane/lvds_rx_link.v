@@ -80,7 +80,12 @@ always @(*) begin
     f_next_state = f_curr_state;
     case(f_curr_state)
         F_IDLE:    if(sof_detected) f_next_state = F_LEN;
-        F_LEN:     f_next_state = (frame_len == 8'd0) ? F_CHECKSUM : F_PAYLOAD;
+        // [V11修复] F_LEN的次态必须用"当前"LEN字节(rx_data_in[7:0])判定, 不能用寄
+        // 存器frame_len——frame_len在本周期才被捕获(rx_data_in[7:0]), 组合逻辑f_next
+        // 同周期读到的是上一帧遗留的旧值。上一帧若为len=1的控制帧, 本帧len=0的USR
+        // 帧会误判frame_len=1→跳F_PAYLOAD, 把CHECKSUM字(0x00001f)当payload输出→比对错。
+        // 改用rx_data_in[7:0]==0直接判定, 消除这一拍旧值竞争。
+        F_LEN:     f_next_state = (rx_data_in[7:0] == 8'd0) ? F_CHECKSUM : F_PAYLOAD;
         F_PAYLOAD: if(payload_cnt + LANE_CNT >= frame_len) f_next_state = F_CHECKSUM;
         F_CHECKSUM:f_next_state = F_IDLE;
         default:   f_next_state = F_IDLE;
@@ -129,6 +134,11 @@ always @(posedge clk or negedge rst_n) begin
         else
             heartbeat_timer <= 20'd0;
 
+        // V6 Debug: print when non-training data appears
+        if(rx_data_in != 24'hB5B5B5 && rx_data_in != 24'h555555 && rx_data_in != 24'h000000) begin
+            $display("[%0t] RX_LINK: non-training data=%h state=%0d", $time, rx_data_in, f_curr_state);
+        end
+
         case(f_curr_state)
             F_IDLE: begin
                 if(sof_detected) begin
@@ -136,6 +146,7 @@ always @(posedge clk or negedge rst_n) begin
                     frame_type <= rx_data_in[23:16];
                     checksum_calc <= SOF_BYTE1 + SOF_BYTE2 + rx_data_in[23:16];
                     payload_cnt <= 8'd0;
+                    $display("[%0t] RX_LINK: SOF detected! type=%h rx_data_in=%h", $time, rx_data_in[23:16], rx_data_in);
                 end
             end
 
@@ -170,6 +181,7 @@ always @(posedge clk or negedge rst_n) begin
                 // CHECKSUM周期: byte0=checksum
                 if(rx_data_in[7:0] == checksum_calc) begin
                     frame_err_cnt <= 4'd0;
+                    $display("[%0t] RX_LINK: Frame OK! type=%h checksum_match", $time, frame_type);
                     if(frame_type == TYPE_HB) begin
                         heartbeat_timer <= 20'd0;
                         heartbeat_miss_cnt <= 4'd0;

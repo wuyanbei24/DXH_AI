@@ -109,6 +109,8 @@ reg [3:0] master_ack_sent_cnt; // 已发送MASTER_ACK的次数
 reg master_recv_slave_ack;
 // [V4修复 LT-04] 从机已发送SLAVE_ACK标志
 reg slave_ack_sent;
+// [V6修复 Bug E] 从机已成功发送SLAVE_ACK帧标志
+reg slave_ack_send_done;
 
 // [V4修复 LT-15] 使用generate-if处理IS_MASTER, 避免组合逻辑中的if(parameter)
 // S_WAIT_PEER状态完成条件
@@ -120,8 +122,9 @@ generate
                                 master_ack_sent_cnt >= MASTER_ACK_SEND_CNT &&
                                 master_recv_slave_ack;
     end else begin : gen_slave_wait
-        assign wait_peer_done = ctrl_frame_valid_pulse &&
-                                ctrl_frame_type_sync2 == TYPE_MASTER_ACK;
+        // V6修复: 从机必须在发送SLAVE_ACK后才进LINK_UP
+        // 原设计收到MASTER_ACK即跳转, 但SLAVE_ACK尚未发出, 主机永远等不到
+        assign wait_peer_done = slave_ack_send_done;
     end
 endgenerate
 
@@ -228,6 +231,7 @@ always @(posedge clk or negedge rst_n) begin
                 if(ctrl_send_timer >= CTRL_SEND_INTERVAL) begin
                     ctrl_send_timer <= 16'd0;
                     ctrl_frame_send <= 1'b1;
+                    $display("[%0t] LINKMGR %s: ctrl_frame_send PULSE type=%h payload=%h", $time, IS_MASTER ? "MST" : "SLV", ctrl_frame_type_out, ctrl_frame_payload_out);
                 end
             end
 
@@ -320,15 +324,22 @@ generate
         always @(posedge clk or negedge rst_n) begin
             if(!rst_n) begin
                 slave_ack_sent <= 1'b0;
+                slave_ack_send_done <= 1'b0;  // V6: 复位
             end else if(curr_state == S_IDLE || curr_state == S_TRAINING) begin
                 slave_ack_sent <= 1'b0;
+                slave_ack_send_done <= 1'b0;  // V6: 重新训练时清除
             end else if(curr_state == S_WAIT_PEER) begin
                 // [V4修复 LT-04] 收到MASTER_ACK后发送SLAVE_ACK确认
                 if(ctrl_frame_valid_pulse && ctrl_frame_type_sync2 == TYPE_MASTER_ACK) begin
                     slave_ack_sent <= 1'b1;
                 end
+                // V6修复: 当ctrl_frame_send脉冲发出且slave_ack_sent=1时, 标记SLAVE_ACK已发送
+                if(ctrl_frame_send && slave_ack_sent) begin
+                    slave_ack_send_done <= 1'b1;
+                end
             end else if(curr_state == S_LINK_UP) begin
                 slave_ack_sent <= 1'b0;
+                slave_ack_send_done <= 1'b0;
             end
         end
 

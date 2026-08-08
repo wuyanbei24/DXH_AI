@@ -17,7 +17,8 @@ module lvds_rx_phy #(
     parameter DELAY_STEPS   = 32,
     parameter SAMPLE_CNT    = 16,
     parameter MIN_WIN_SIZE  = 4,
-    parameter DESKEW_DEPTH  = 8
+    parameter DESKEW_DEPTH  = 8,
+    parameter SIM_BYPASS    = 0  // V8: 仿真旁路BUFIO/BUFR, 使用TX同源时钟
 )(
     input  wire rst_n,
     // LVDS差分输入：1路时钟 + 3路数据
@@ -30,6 +31,9 @@ module lvds_rx_phy #(
     // 控制接口
     input  wire retrain_req,
     input  wire heartbeat_err,  // 链路层心跳超时指示
+    // V8: 仿真旁路时钟输入（SIM_BYPASS=1时使用）
+    input  wire clk_ser_ext,    // TX同源400MHz串行时钟
+    input  wire clk_div_ext,    // TX同源100MHz并行时钟
     // 并行数据输出（同步24bit）
     output wire [LANE_CNT*DATA_WIDTH-1:0] rx_data,
     output wire                            rx_data_valid,
@@ -81,40 +85,64 @@ localparam [15:0] LOCK_VOTE_THRESHOLD = 16'd4000; // 80%通过率要求
 localparam FAULT_RECOVERY_CYCLES = 16'd50000; // M_FAULT等待后自动恢复
 localparam MAX_FAULT_RETRY = 4'd5; // V4: 最大故障重试次数
 
-// 时钟缓冲通路
-IBUFDS #(
-.DIFF_TERM("TRUE"), 
-.IOSTANDARD("DEFAULT")) 
-u_ibufds_clk (
-    .I(lvds_clk_p), 
-    .IB(lvds_clk_n), 
-    .O(clk_ibuf)
-);
+// V8: 时钟缓冲通路 — generate块条件实例化
+// SIM_BYPASS=1(仿真): 直接使用TX同源时钟, 绕过BUFIO/BUFR行为模型
+//   原因: ModelSim的BUFIO/BUFR行为模型与TX MMCM输出存在不可预测相位偏移,
+//   导致ISERDESE2采样窗口与OSERDESE2串行化边界不对齐, 变化数据产生乱码
+// SIM_BYPASS=0(综合): 使用标准BUFIO+BUFR时钟方案
+generate
+    if(SIM_BYPASS) begin : gen_sim_clk
+        // V8仿真旁路: TX/RX共享同一时钟源, 消除相位偏移
+        assign clk_bufio = clk_ser_ext;
+        assign clk_div   = clk_div_ext;
+    end else begin : gen_real_clk
+        // [V5修复] 使用BUFIO+BUFR替代MMCM, 确保CLK/CLKDIV相位对齐
+        IBUFDS #(
+        .DIFF_TERM("TRUE"), 
+        .IOSTANDARD("DEFAULT")) 
+        u_ibufds_clk (
+            .I(lvds_clk_p), 
+            .IB(lvds_clk_n), 
+            .O(clk_ibuf)
+        );
 
+        BUFIO u_bufio_clk (
+            .I(clk_ibuf),
+            .O(clk_bufio)
+        );
 
-wire clk_out4_100   ;
-wire mmcm_lock      ;
+        BUFR #(
+            .BUFR_DIVIDE("4"),
+            .SIM_DEVICE("7SERIES")
+        ) u_bufr_div (
+            .I(clk_ibuf),
+            .O(clk_div),
+            .CE(1'b1),
+            .CLR(~rst_n)
+        );
+    end
+endgenerate
 
-// 输入LVDS时钟400MHz, 通过lvds_rx_pll实现4:1分频输出100MHz
-lvds_rx_pll lvds_clkdiv_gen (
-    .clk_out1(clk_out4_100),  // 100MHz parallel clock
-    .locked  (mmcm_lock),
-    .clk_in1 (clk_ibuf)       // 400MHz from IBUFDS
-);
-
-// clk_bufio直接使用IBUFDS输出的400MHz, clk_div使用PLL输出的100MHz
-assign clk_bufio = clk_ibuf;         // 400MHz serial clock
-assign clk_div   = clk_out4_100;     // 100MHz parallel clock
-
-// BUFIO u_bufio_clk (.I(clk_ibuf), .O(clk_bufio));
-// BUFR #(.BUFR_DIVIDE("4"), 
-// .SIM_DEVICE("7SERIES"))
-//  u_bufr_div (
-//     .I(clk_ibuf), 
-//     .O(clk_div), 
-//     .CE(1'b1), 
-//     .CLR(~rst_n)
-// );
+// [V5修复] BUFR稳定等待 (仿真旁路模式下跳过)
+reg [3:0] bufr_settle_cnt;
+reg clk_div_ready;
+always @(posedge clk_div or negedge rst_n) begin
+    if(!rst_n) begin
+        bufr_settle_cnt <= 4'd0;
+        clk_div_ready <= 1'b0;
+    end else if(SIM_BYPASS) begin
+        // V8: 仿真旁路无需等待BUFR稳定
+        bufr_settle_cnt <= 4'd15;
+        clk_div_ready <= 1'b1;
+    end else begin
+        if(bufr_settle_cnt < 4'd15) begin
+            bufr_settle_cnt <= bufr_settle_cnt + 1'b1;
+            clk_div_ready <= 1'b0;
+        end else begin
+            clk_div_ready <= 1'b1;
+        end
+    end
+end
 
 // 共用IDELAYCTRL
 IDELAYCTRL u_idelayctrl (
@@ -134,7 +162,7 @@ generate
             .MIN_WIN_SIZE(MIN_WIN_SIZE)
         ) u_lane_phy (
             // .rst_n(rst_n),
-            .rst_n(mmcm_lock),
+            .rst_n(clk_div_ready),  // [V5修复] 使用BUFR稳定信号替代MMCM lock
             .lvds_data_p(lvds_data_p[lane_idx]),
             .lvds_data_n(lvds_data_n[lane_idx]),
             .clk_bufio(clk_bufio),  // V4: 使用400MHz串行时钟
@@ -157,6 +185,8 @@ assign any_lane_err = |lane_calib_err;
 wire training_mode = (m_curr_state != M_NORMAL);
 
 // 通道间相位对齐模块
+// [V6修复 Bug D] deskew_en需在M_LANE_DESKEW/M_LOCK_CHECK/M_NORMAL期间保持有效
+// 原设计仅M_LANE_DESKEW时使能, 进入M_LOCK_CHECK后deskew_en=0导致deskew_done被清零
 lane_deskew #(
     .DATA_WIDTH(DATA_WIDTH),
     .LANE_CNT(LANE_CNT),
@@ -166,7 +196,7 @@ lane_deskew #(
     .rst_n(rst_n),
     .data_in({lane_data[2], lane_data[1], lane_data[0]}),
     .sync_word(8'hB5),
-    .deskew_en(m_curr_state == M_LANE_DESKEW),
+    .deskew_en(m_curr_state != M_IDLE && m_curr_state != M_CALIB && m_curr_state != M_FAULT),  // V6: 保持deskew使能
     .data_out(deskew_data_out),
     .deskew_done(deskew_done)
 );
@@ -277,6 +307,49 @@ always @(posedge clk_div or negedge rst_n) begin
         fault_wait_timer <= fault_wait_timer + 1'b1;
     else
         fault_wait_timer <= 16'd0;
+end
+
+// [V6-DEBUG] per-lane 调试: 打印每通道原始ISERDESE2输出和deskew输出
+// 用于诊断 lane-to-lane 错位问题
+reg [2:0] dbg_state_prev;
+reg [8:0] dbg_normal_cnt;  // V8: 扩展为9位以支持600+周期计数
+always @(posedge clk_div or negedge rst_n) begin
+    if(!rst_n) begin
+        dbg_state_prev <= 3'd0;
+        dbg_normal_cnt <= 9'd0;
+    end else begin
+        dbg_state_prev <= m_curr_state;
+        // 状态切换时打印
+        if(m_curr_state != dbg_state_prev) begin
+            $display("[%0t] RX_PHY STATE: %0d->%0d lane0=%h lane1=%h lane2=%h deskew_out=%h deskew_done=%b",
+                $time, dbg_state_prev, m_curr_state,
+                lane_data[0], lane_data[1], lane_data[2],
+                deskew_data_out, deskew_done);
+        end
+        // 在M_LANE_DESKEW/M_LOCK_CHECK期间, 每100周期打印一次per-lane数据
+        if((m_curr_state == M_LANE_DESKEW || m_curr_state == M_LOCK_CHECK) &&
+           (lock_timer[7:0] == 8'd0)) begin
+            $display("[%0t] RX_PHY DESKEW_DBG: state=%0d lane0=%h lane1=%h lane2=%h deskew_out=%h",
+                $time, m_curr_state,
+                lane_data[0], lane_data[1], lane_data[2], deskew_data_out);
+        end
+        // V7: M_NORMAL后前600个周期逐周期打印per-lane数据(含训练和帧数据)
+        if(m_curr_state == M_NORMAL) begin
+            if(dbg_normal_cnt < 9'd600) begin
+                $display("[%0t] RX_PHY CYCLE%0d: lane0=%h lane1=%h lane2=%h deskew_out=%h",
+                    $time, dbg_normal_cnt,
+                    lane_data[0], lane_data[1], lane_data[2], deskew_data_out);
+                dbg_normal_cnt <= dbg_normal_cnt + 1'b1;
+            end
+            // 非训练数据也打印
+            if(deskew_data_out != 24'hB5B5B5 && deskew_data_out != 24'h000000) begin
+                $display("[%0t] RX_PHY NORMAL: non-training data lane0=%h lane1=%h lane2=%h deskew_out=%h",
+                    $time, lane_data[0], lane_data[1], lane_data[2], deskew_data_out);
+            end
+        end else begin
+            dbg_normal_cnt <= 9'd0;
+        end
+    end
 end
 
 endmodule

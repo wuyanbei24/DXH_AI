@@ -27,7 +27,10 @@ module lane_deskew #(
 reg [DATA_WIDTH-1:0] shift_reg [LANE_CNT-1:0][DESKEW_DEPTH-1:0];
 reg [2:0] lane_offset [LANE_CNT-1:0];
 reg [3:0] check_cnt;
-integer i, j;
+
+// [V8修复] 移除模块级共享integer i,j, 改为每个always块内局部变量
+// 原设计: integer i,j 在3个always块中共享, 组合输出块的for循环可能被
+// 时序块的i/j修改干扰, 导致deskew_data_out读取错误的shift_reg位置
 
 // [V4修复 LT-13] 周期性重校验计数器
 reg [19:0] recheck_timer;
@@ -37,7 +40,8 @@ reg [3:0] recheck_fail_cnt;
 localparam RECHECK_FAIL_THRESHOLD = 4'd3; // 连续3次重校验失败才重新对齐
 
 // 移位寄存器链
-always @(posedge clk or negedge rst_n) begin
+always @(posedge clk or negedge rst_n) begin : shift_reg_proc
+    integer i, j;  // V8: 局部变量, 避免跨always块竞态
     if(!rst_n) begin
         for(i = 0; i < LANE_CNT; i = i + 1)
             for(j = 0; j < DESKEW_DEPTH; j = j + 1)
@@ -58,11 +62,12 @@ end
 reg [LANE_CNT-1:0] offset_found;  // 每路是否已找到偏移
 reg found_this_cycle;  // V4: 局部匹配标志, 同一周期内锁定首次匹配
 
-always @(posedge clk or negedge rst_n) begin
+always @(posedge clk or negedge rst_n) begin : deskew_detect_proc
+    integer i, j;  // V8: 局部变量
     if(!rst_n) begin
         deskew_done <= 1'b0;
         check_cnt <= 4'd0;
-        offset_found <= {LANE_CNT{1'b0}};
+        offset_found <= {{(LANE_CNT-1){1'b0}}, 1'b1};  // V6: lane0是基准, 始终"已找到"
         recheck_timer <= 20'd0;
         recheck_req <= 1'b0;
         recheck_fail_cnt <= 4'd0;
@@ -72,7 +77,7 @@ always @(posedge clk or negedge rst_n) begin
         // [V4修复 LT-03] deskew_en失效时彻底清零所有状态
         deskew_done <= 1'b0;
         check_cnt <= 4'd0;
-        offset_found <= {LANE_CNT{1'b0}};
+        offset_found <= {{(LANE_CNT-1){1'b0}}, 1'b1};  // V6: lane0是基准, 始终"已找到"
         recheck_timer <= 20'd0;
         recheck_req <= 1'b0;
         recheck_fail_cnt <= 4'd0;
@@ -96,7 +101,7 @@ always @(posedge clk or negedge rst_n) begin
             if(recheck_fail_cnt >= RECHECK_FAIL_THRESHOLD) begin
                 // 连续多次校验失败, 重新对齐
                 deskew_done <= 1'b0;
-                offset_found <= {LANE_CNT{1'b0}};
+                offset_found <= {{(LANE_CNT-1){1'b0}}, 1'b1};  // V6: lane0是基准
                 recheck_fail_cnt <= 4'd0;
                 for(i = 0; i < LANE_CNT; i = i + 1)
                     lane_offset[i] <= 3'd0;
@@ -135,6 +140,7 @@ always @(posedge clk or negedge rst_n) begin
                 end
                 if(check_cnt >= 4'd15) begin
                     deskew_done <= 1'b1;
+                    $display("[%0t] DESKEW DONE: offset[0]=%0d offset[1]=%0d offset[2]=%0d", $time, lane_offset[0], lane_offset[1], lane_offset[2]);
                 end
             end
         end else begin
@@ -144,7 +150,8 @@ always @(posedge clk or negedge rst_n) begin
 end
 
 // [V4修复 LT-17] 对齐输出: deskew_done=0时输出全零, 防止下游使用无效数据
-always @(*) begin
+always @(*) begin : deskew_output_proc
+    integer i;  // V8: 局部变量
     if(deskew_done) begin
         data_out[0*DATA_WIDTH +: DATA_WIDTH] = shift_reg[0][0];
         for(i = 1; i < LANE_CNT; i = i + 1) begin

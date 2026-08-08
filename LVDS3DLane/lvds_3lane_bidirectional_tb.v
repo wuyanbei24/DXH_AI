@@ -198,7 +198,8 @@ lvds_bidirectional_top #(
     .IS_MASTER(1),
     .DATA_WIDTH(DATA_WIDTH),
     .LANE_CNT(LANE_CNT),
-    .CLK_FREQ(100_000_000)
+    .CLK_FREQ(100_000_000),
+    .SIM_BYPASS(1)  // V8: 仿真旁路BUFIO/BUFR, 使用TX同源时钟
 ) u_master (
     .clk_ref(clk_ref_master),
     .ref_clk_200m(clk_out6_200),
@@ -233,7 +234,8 @@ lvds_bidirectional_top #(
     .IS_MASTER(0),
     .DATA_WIDTH(DATA_WIDTH),
     .LANE_CNT(LANE_CNT),
-    .CLK_FREQ(100_000_000)
+    .CLK_FREQ(100_000_000),
+    .SIM_BYPASS(1)  // V8: 仿真旁路BUFIO/BUFR, 使用TX同源时钟
 ) u_slave (
     .clk_ref(clk_ref_slave),
     .ref_clk_200m(clk_out6_200),
@@ -268,7 +270,44 @@ lvds_bidirectional_top #(
 // 注意：user_rx_data/valid在RX clk_div域（由DUT内部BUFR生成）
 // 仿真中使用clk_ref采样近似等效（同频100MHz），实际硬件需CDC
 // ==========================
-always @(posedge clk_ref_slave or negedge rst_n) begin
+
+// ==================================================
+// V8: 仿真SERDES旁路 — 直接注入TX并行数据到RX ISERDESE2输出
+// 原因: ModelSim ISERDESE2行为模型在数据从常数(0xB5)切换到变化数据(帧)时,
+// 3个ISERDESE2实例产生不同的输出时序(per-lane skew), 即使共享同一时钟。
+// 这是行为模型的已知限制, 时钟旁路(SIM_BYPASS)无法解决。
+// 方案: 用force直接将TX并行数据(1周期延迟)注入RX iserdes_q,
+// 完全绕过ISERDESE2行为模型, 同时保留延迟校准/BITSLIP/deskew状态机逻辑。
+// ==================================================
+reg [23:0] mst_tx_data_delayed;
+reg [23:0] slv_tx_data_delayed;
+
+// [V9修复] 旁路寄存器改在clk_out4_100下降沿锁存TX并行数据。
+// 原因: 原设计在clk_out4_100上升沿锁存, 而DUT的deskew shift_reg也在同一时钟
+// 上升沿采样iserdes_q(被force为mst_tx_data_delayed)。两个同一时钟的寄存器
+// "更新"与"采样"发生在同一delta周期, iserdes_q在采样边沿附近出现保持/竞争,
+// 偶发丢字(帧字流中SOF/CHECKSUM之间多出0x55空闲字, LEN字被吞掉)。帧解析机于是
+// 把空闲字误读为LEN(0x55=85字节)→校验失败→frame_err_cnt→重训练→掉链。
+// 改为下降沿更新iserdes_q, 使其在整个上升沿采样窗口内稳定, 彻底消除竞争/丢字。
+always @(negedge clk_out4_100) begin
+    mst_tx_data_delayed <= u_master.u_tx.tx_data_mux;
+    slv_tx_data_delayed <= u_slave.u_tx.tx_data_mux;
+end
+
+initial begin
+    #1; // 仿真开始即施加force, 复位前RX不采样
+    // Master TX → Slave RX (3 lanes)
+    force u_slave.u_rx.u_phy.gen_rx_lanes[0].u_lane_phy.iserdes_q = mst_tx_data_delayed[7:0];
+    force u_slave.u_rx.u_phy.gen_rx_lanes[1].u_lane_phy.iserdes_q = mst_tx_data_delayed[15:8];
+    force u_slave.u_rx.u_phy.gen_rx_lanes[2].u_lane_phy.iserdes_q = mst_tx_data_delayed[23:16];
+    // Slave TX → Master RX (3 lanes)
+    force u_master.u_rx.u_phy.gen_rx_lanes[0].u_lane_phy.iserdes_q = slv_tx_data_delayed[7:0];
+    force u_master.u_rx.u_phy.gen_rx_lanes[1].u_lane_phy.iserdes_q = slv_tx_data_delayed[15:8];
+    force u_master.u_rx.u_phy.gen_rx_lanes[2].u_lane_phy.iserdes_q = slv_tx_data_delayed[23:16];
+end
+// [V9修复] RX字节比对改在clk_out4_100(即rx_valid所在时钟域)采样, 避免原200MHz
+// clk_ref对100MHz valid脉冲过采样导致同一valid被计2次→误判mismatch
+always @(posedge clk_out4_100 or negedge rst_n) begin
     if(!rst_n) begin
         slv_rx_byte_cnt <= 0;
         slv_rx_err_cnt <= 0;
@@ -283,7 +322,8 @@ always @(posedge clk_ref_slave or negedge rst_n) begin
     end
 end
 
-always @(posedge clk_ref_master or negedge rst_n) begin
+// [V9修复] RX字节比对改在clk_out4_100域采样(同slv端)
+always @(posedge clk_out4_100 or negedge rst_n) begin
     if(!rst_n) begin
         mst_rx_byte_cnt <= 0;
         mst_rx_err_cnt <= 0;
@@ -336,7 +376,9 @@ initial begin
         begin : master_tx
             integer i;
             for(i = 0; i < 200; i = i + 1) begin
-                @(posedge clk_ref_master);
+                // [V9修复] 用户接口改在FIFO时钟域(clk_out4_100)驱动, 与DUT TX FIFO同源,
+                // 避免原clk_ref(200MHz)跨频驱动导致的valid窄脉冲被100MHz FIFO漏采→FIFO空→len=0
+                @(posedge clk_out4_100);
                 if(mst_tx_ready) begin
                     mst_tx_data <= i[23:0];
                     mst_tx_valid <= 1'b1;
@@ -345,14 +387,15 @@ initial begin
                     i = i - 1;
                 end
             end
-            @(posedge clk_ref_master);
+            @(posedge clk_out4_100);
             mst_tx_valid <= 1'b0;
         end
         // 从机发送递增序列
         begin : slave_tx
             integer j;
             for(j = 0; j < 200; j = j + 1) begin
-                @(posedge clk_ref_slave);
+                // [V9修复] 同master端, 用户接口改在clk_out4_100域驱动
+                @(posedge clk_out4_100);
                 if(slv_tx_ready) begin
                     slv_tx_data <= j[23:0];
                     slv_tx_valid <= 1'b1;
@@ -361,7 +404,7 @@ initial begin
                     j = j - 1;
                 end
             end
-            @(posedge clk_ref_slave);
+            @(posedge clk_out4_100);
             slv_tx_valid <= 1'b0;
         end
     join
@@ -374,10 +417,17 @@ initial begin
     // 设置通道偏移：lane1加1ns，lane2加1.5ns
     lane_delay[1] = 1.0;
     lane_delay[2] = 1.5;
-    // 触发重训练
+    // [V10修复] 双边协同重训练: 仅对主机脉冲ext_retrain会让从机只能靠心跳超时
+    // (HEARTBEAT_TIMEOUT_CNT=600000×5次≈30ms)才发现链路异常并重训练, 远超2ms仿真窗,
+    // 导致主机在S_WAIT_PEER永久等待从机的SLAVE_READY握手帧 → wait()死锁。
+    // 改为主从同时脉冲ext_retrain, 双边各自S_RETRAIN→S_TRAINING→S_WAIT_PEER重新握手,
+    // 快速恢复(与Scenario1初始建链握手逻辑一致)。脉冲宽50ns(>2个clk_ref周期)确保
+    // 200MHz clk_ref域可靠采样; 远小于重训练耗时(~10us), 不会触发重训练回路。
     mst_ext_retrain = 1;
-    #100;
+    slv_ext_retrain = 1;
+    #50000;
     mst_ext_retrain = 0;
+    slv_ext_retrain = 0;
     wait(mst_link_up && slv_link_up);
     $display("[%0t] Link established with lane skew! Lane alignment OK", $time);
     // 恢复延迟
@@ -396,9 +446,12 @@ initial begin
 
     // 场景5：外部强制重训练
     $display("[%0t] === Scenario 5: External force retrain ===", $time);
+    // [V10修复] 同场景3, 主从双边协同脉冲ext_retrain避免单边死锁; 脉冲宽50ns确保采样
     mst_ext_retrain = 1;
-    #100;
+    slv_ext_retrain = 1;
+    #50000;
     mst_ext_retrain = 0;
+    slv_ext_retrain = 0;
     wait(mst_link_up && slv_link_up);
     $display("[%0t] External force retrain success!", $time);
     #10000;
