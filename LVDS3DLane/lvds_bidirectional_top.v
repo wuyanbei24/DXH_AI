@@ -29,7 +29,7 @@ module lvds_bidirectional_top #(
     input  wire [LANE_CNT-1:0] rx_lvds_data_n,
 
     // 用户数据发送接口（24bit）
-    input  wire [LANE_CNT*DATA_WIDTH-1:0] user_tx_data,
+    input  wire [LANE_CNT*DATA_WIDTH-1:0]  user_tx_data,
     input  wire                            user_tx_valid,
     output wire                            user_tx_ready,
 
@@ -114,7 +114,9 @@ lvds_tx_channel #(
     .LANE_CNT(LANE_CNT),
     .CLK_FREQ(CLK_FREQ)
 ) u_tx (
-    .clk_ser(clk_ser), .clk_div(clk_div), .rst_n(rst_n),
+    .clk_ser(clk_ser), 
+    .clk_div(clk_div), 
+    .rst_n(rst_n),
     .train_en(tx_train_en_s2),
     .ctrl_frame_send(ctrl_frame_send_sync),
     .ctrl_frame_type(ctrl_frame_type_s2),
@@ -122,8 +124,10 @@ lvds_tx_channel #(
     .tx_data_in(user_tx_data),
     .tx_data_valid(user_tx_valid & user_tx_en_s2),
     .tx_ready(user_tx_ready),
-    .lvds_clk_p(tx_lvds_clk_p), .lvds_clk_n(tx_lvds_clk_n),
-    .lvds_data_p(tx_lvds_data_p), .lvds_data_n(tx_lvds_data_n)
+    .lvds_clk_p(tx_lvds_clk_p),
+    .lvds_clk_n(tx_lvds_clk_n),
+    .lvds_data_p(tx_lvds_data_p), 
+    .lvds_data_n(tx_lvds_data_n)
 );
 
 // 接收通道
@@ -132,8 +136,10 @@ lvds_rx_channel #(
     .LANE_CNT(LANE_CNT)
 ) u_rx (
     .rst_n(rst_n),
-    .lvds_clk_p(rx_lvds_clk_p), .lvds_clk_n(rx_lvds_clk_n),
-    .lvds_data_p(rx_lvds_data_p), .lvds_data_n(rx_lvds_data_n),
+    .lvds_clk_p(rx_lvds_clk_p), 
+    .lvds_clk_n(rx_lvds_clk_n),
+    .lvds_data_p(rx_lvds_data_p), 
+    .lvds_data_n(rx_lvds_data_n),
     .ref_clk_200m(ref_clk_200m),
     .retrain_req(ext_retrain_req | rx_retrain_req),
     .clk_div(rx_clk_div),
@@ -155,7 +161,8 @@ assign user_rx_valid = rx_valid_raw & user_rx_en;
 lvds_link_manager #(
     .IS_MASTER(IS_MASTER)
 ) u_link_mgr (
-    .clk(clk_ref), .rst_n(rst_n),
+    .clk(clk_ref), 
+    .rst_n(rst_n),
     .rx_phy_ready(rx_phy_ready),
     .rx_link_up(rx_link_up),
     .rx_retrain_req(rx_retrain_req),

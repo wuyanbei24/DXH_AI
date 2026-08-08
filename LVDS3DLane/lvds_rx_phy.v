@@ -70,14 +70,66 @@ localparam MAX_RETRY = 2'd3;
 localparam FAULT_RECOVERY_CYCLES = 16'd50000; // M_FAULT等待后自动恢复
 
 // 时钟缓冲通路
-IBUFDS #(.DIFF_TERM("TRUE"), .IOSTANDARD("LVDS_25")) u_ibufds_clk (
-    .I(lvds_clk_p), .IB(lvds_clk_n), .O(clk_ibuf)
+IBUFDS #(
+.DIFF_TERM("TRUE"), 
+.IOSTANDARD("DEFAULT")) 
+u_ibufds_clk (
+    .I(lvds_clk_p), 
+    .IB(lvds_clk_n), 
+    .O(clk_ibuf)
 );
 
-BUFIO u_bufio_clk (.I(clk_ibuf), .O(clk_bufio));
-BUFR #(.BUFR_DIVIDE("4"), .SIM_DEVICE("7SERIES")) u_bufr_div (
-    .I(clk_ibuf), .O(clk_div), .CE(1'b1), .CLR(~rst_n)
-);
+
+wire clk_out1_400   ;
+wire clk_out2_125   ;
+wire clk_out3_125   ;
+wire clk_out4_100   ;
+wire clk_out5_50    ;
+wire clk_out6_200   ;
+wire clk_out7_10    ;
+wire mmcm_lock      ;
+/*
+mfpga_clk_ip lvds_clkdiv_gen 
+ (
+  // Clock out ports
+    .clk_out1(clk_out1_400   ),
+    .clk_out2(clk_out2_125   ),
+    .clk_out3(clk_out3_125   ),
+    .clk_out4(clk_out4_100   ),
+    .clk_out5(clk_out5_50    ),
+    .clk_out6(clk_out6_200   ),
+    .clk_out7(clk_out7_10    ),
+  // Status and control signals
+    .locked  (mmcm_lock      ),
+ // Clock in ports
+    .clk_in1(clk_ibuf)
+ );
+*/
+
+
+lvds_rx_pll  inst_lvds_rx_pll
+ ( 
+  // Clock out ports
+  .clk_out1(clk_out4_100),
+  // Status and control signals
+  .locked(mmcm_lock),
+ // Clock in ports
+  .clk_in1(clk_ibuf)
+ );
+
+
+
+assign clk_div = clk_out4_100;
+
+// BUFIO u_bufio_clk (.I(clk_ibuf), .O(clk_bufio));
+// BUFR #(.BUFR_DIVIDE("4"), 
+// .SIM_DEVICE("7SERIES"))
+//  u_bufr_div (
+//     .I(clk_ibuf), 
+//     .O(clk_div), 
+//     .CE(1'b1), 
+//     .CLR(~rst_n)
+// );
 
 // 共用IDELAYCTRL
 IDELAYCTRL u_idelayctrl (
@@ -96,10 +148,12 @@ generate
             .SAMPLE_CNT(SAMPLE_CNT),
             .MIN_WIN_SIZE(MIN_WIN_SIZE)
         ) u_lane_phy (
-            .rst_n(rst_n),
+            // .rst_n(rst_n),
+            .rst_n(mmcm_lock),
             .lvds_data_p(lvds_data_p[lane_idx]),
             .lvds_data_n(lvds_data_n[lane_idx]),
-            .clk_bufio(clk_bufio),
+            // .clk_bufio(clk_bufio),
+            .clk_bufio(clk_ibuf),
             .clk_div(clk_div),
             .ref_clk_200m(ref_clk_200m),
             .retrain_req(retrain_req),

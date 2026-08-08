@@ -1,4 +1,4 @@
-`timescale 1ps / 1ps
+`timescale 1ns / 1ps
 `include "glbl.v"
 
 //============================================================================
@@ -12,15 +12,21 @@
 module lvds_3lane_bidirectional_tb;
 
 // 参数定义
+localparam CLK_REF_50M    = 20;    // 100MHz
 localparam CLK_REF_PERIOD = 10;    // 100MHz
 localparam CLK_SER_PERIOD = 2.5;   // 400MHz
 localparam CLK_200M_PERIOD = 5;   // 200MHz
 localparam DATA_WIDTH = 8;
 localparam LANE_CNT = 3;
 
+
+
+
+
+
 // 时钟与复位
-reg clk_ref_master;
-reg clk_ref_slave ;
+wire clk_ref_master;
+wire clk_ref_slave ;
 reg clk_ser_master;
 reg clk_ser_slave ;
 reg clk_div_master;
@@ -82,11 +88,11 @@ reg [LANE_CNT*DATA_WIDTH-1:0] slv_expect_data;
 // ==========================
 // 时钟生成
 // ==========================
-initial clk_ref_master = 0;
-always #(CLK_REF_PERIOD/2) clk_ref_master = ~clk_ref_master;
+// initial clk_ref_master = 0;
+// always #(CLK_REF_PERIOD/2) clk_ref_master = ~clk_ref_master;
 
-initial clk_ref_slave = 0;
-always #(CLK_REF_PERIOD/2) clk_ref_slave = ~clk_ref_slave;
+// initial clk_ref_slave = 0;
+// always #(CLK_REF_PERIOD/2) clk_ref_slave = ~clk_ref_slave;
 
 initial clk_ser_master = 0;
 always #(CLK_SER_PERIOD/2) clk_ser_master = ~clk_ser_master;
@@ -103,6 +109,40 @@ always #(CLK_REF_PERIOD/2) clk_div_slave = ~clk_div_slave;
 initial clk_200m = 0;
 always #(CLK_200M_PERIOD/2) clk_200m = ~clk_200m;
 
+
+reg fpga_ref_clk;
+initial fpga_ref_clk = 0;
+always #(CLK_REF_50M/2) fpga_ref_clk = ~fpga_ref_clk;
+
+wire clk_out1_400   ;
+wire clk_out2_125   ;
+wire clk_out3_125   ;
+wire clk_out4_100   ;
+wire clk_out5_50    ;
+wire clk_out6_200   ;
+wire clk_out7_10    ;
+
+
+assign  clk_ref_master = clk_out6_200;
+assign  clk_ref_slave  = clk_out6_200;
+
+mfpga_clk_ip mfpga_clk_ip 
+ (
+  // Clock out ports
+    .clk_out1(clk_out1_400   ),
+    .clk_out2(clk_out2_125   ),
+    .clk_out3(clk_out3_125   ),
+    .clk_out4(clk_out4_100   ),
+    .clk_out5(clk_out5_50    ),
+    .clk_out6(clk_out6_200   ),
+    .clk_out7(clk_out7_10    ),
+  // Status and control signals
+    .locked(),
+ // Clock in ports
+    .clk_in1(fpga_ref_clk)
+ );
+
+
 // ==========================
 // 链路延迟与故障注入模型
 // 每路数据独立延迟，支持通道偏移与断链
@@ -110,28 +150,46 @@ always #(CLK_200M_PERIOD/2) clk_200m = ~clk_200m;
 // assign #(2.0) m2s_clk_p_del = link_break_m2s ? 1'bz : m2s_clk_p;
 // assign #(2.0) m2s_clk_n_del = link_break_m2s ? 1'bz : m2s_clk_n;
 
-assign #(2.0) m2s_clk_p_del =   m2s_clk_p;
-assign #(2.0) m2s_clk_n_del =   m2s_clk_n;
+// assign #(2.0) m2s_clk_p_del =   m2s_clk_p;
+// assign #(2.0) m2s_clk_n_del =   m2s_clk_n;
 
+
+// generate
+    // genvar lane;
+    // for(lane = 0; lane < LANE_CNT; lane = lane + 1) begin : gen_m2s_delay
+        // assign #(2.0 + lane_delay[lane]) m2s_data_p_del[lane] = link_break_m2s ? 1'bz : m2s_data_p[lane];
+        // assign #(2.0 + lane_delay[lane]) m2s_data_n_del[lane] = link_break_m2s ? 1'bz : m2s_data_n[lane];
+    // end
+// endgenerate
 
 generate
     genvar lane;
     for(lane = 0; lane < LANE_CNT; lane = lane + 1) begin : gen_m2s_delay
-        assign #(2.0 + lane_delay[lane]) m2s_data_p_del[lane] = link_break_m2s ? 1'bz : m2s_data_p[lane];
-        assign #(2.0 + lane_delay[lane]) m2s_data_n_del[lane] = link_break_m2s ? 1'bz : m2s_data_n[lane];
+        assign  m2s_data_p_del[lane] = link_break_m2s ? 1'bz : m2s_data_p[lane];
+        assign  m2s_data_n_del[lane] = link_break_m2s ? 1'bz : m2s_data_n[lane];
     end
 endgenerate
 
 // assign #(2.0) s2m_clk_p_del = link_break_s2m ? 1'bz : s2m_clk_p;
 // assign #(2.0) s2m_clk_n_del = link_break_s2m ? 1'bz : s2m_clk_n;
+
 assign #(2.0) s2m_clk_p_del =  s2m_clk_p;
 assign #(2.0) s2m_clk_n_del =  s2m_clk_n;
+// generate
+    // for(lane = 0; lane < LANE_CNT; lane = lane + 1) begin : gen_s2m_delay
+        // assign #(2.0 + lane_delay[lane]) s2m_data_p_del[lane] = link_break_s2m ? 1'bz : s2m_data_p[lane];
+        // assign #(2.0 + lane_delay[lane]) s2m_data_n_del[lane] = link_break_s2m ? 1'bz : s2m_data_n[lane];
+    // end
+// endgenerate
+
 generate
     for(lane = 0; lane < LANE_CNT; lane = lane + 1) begin : gen_s2m_delay
-        assign #(2.0 + lane_delay[lane]) s2m_data_p_del[lane] = link_break_s2m ? 1'bz : s2m_data_p[lane];
-        assign #(2.0 + lane_delay[lane]) s2m_data_n_del[lane] = link_break_s2m ? 1'bz : s2m_data_n[lane];
+        assign   s2m_data_p_del[lane] = link_break_s2m ? 1'bz : s2m_data_p[lane];
+        assign   s2m_data_n_del[lane] = link_break_s2m ? 1'bz : s2m_data_n[lane];
     end
 endgenerate
+
+
 
 // ==========================
 // 主机DUT例化
@@ -143,18 +201,18 @@ lvds_bidirectional_top #(
     .CLK_FREQ(100_000_000)
 ) u_master (
     .clk_ref(clk_ref_master),
-    .ref_clk_200m(clk_200m),
+    .ref_clk_200m(clk_out6_200),
     .rst_n(rst_n),
-    .clk_ser(clk_ser_master),
-    .clk_div(clk_div_master),
+    .clk_ser(clk_out1_400),
+    .clk_div(clk_out4_100),
     // 发送方向
     .tx_lvds_clk_p(m2s_clk_p), .tx_lvds_clk_n(m2s_clk_n),
     .tx_lvds_data_p(m2s_data_p), .tx_lvds_data_n(m2s_data_n),
     // 接收方向
-    .rx_lvds_clk_p(s2m_clk_p_del), .rx_lvds_clk_n(s2m_clk_n_del),
-    // .rx_lvds_clk_p(s2m_clk_p), .rx_lvds_clk_n(s2m_clk_n),
-    .rx_lvds_data_p(s2m_data_p_del), .rx_lvds_data_n(s2m_data_n_del),
-    // .rx_lvds_data_p(s2m_data_p), .rx_lvds_data_n(s2m_data_n),
+    // .rx_lvds_clk_p(s2m_clk_p_del), .rx_lvds_clk_n(s2m_clk_n_del),
+    .rx_lvds_clk_p(s2m_clk_p), .rx_lvds_clk_n(s2m_clk_n),
+    // .rx_lvds_data_p(s2m_data_p_del), .rx_lvds_data_n(s2m_data_n_del),
+    .rx_lvds_data_p(s2m_data_p), .rx_lvds_data_n(s2m_data_n),
     // 用户接口
     .user_tx_data(mst_tx_data),
     .user_tx_valid(mst_tx_valid),
@@ -178,18 +236,20 @@ lvds_bidirectional_top #(
     .CLK_FREQ(100_000_000)
 ) u_slave (
     .clk_ref(clk_ref_slave),
-    .ref_clk_200m(clk_200m),
+    .ref_clk_200m(clk_out6_200),
     .rst_n(rst_n),
-    .clk_ser(clk_ser_slave),
-    .clk_div(clk_div_slave),
+    .clk_ser(clk_out1_400),
+    .clk_div(clk_out4_100),
     // 发送方向
-    .tx_lvds_clk_p(s2m_clk_p), .tx_lvds_clk_n(s2m_clk_n),
-    .tx_lvds_data_p(s2m_data_p), .tx_lvds_data_n(s2m_data_n),
+    .tx_lvds_clk_p(s2m_clk_p), 
+    .tx_lvds_clk_n(s2m_clk_n),
+    .tx_lvds_data_p(s2m_data_p), 
+    .tx_lvds_data_n(s2m_data_n),
     // 接收方向
-    .rx_lvds_clk_p(m2s_clk_p_del), .rx_lvds_clk_n(m2s_clk_n_del),
-    // .rx_lvds_clk_p(m2s_clk_p), .rx_lvds_clk_n(m2s_clk_n),
-    .rx_lvds_data_p(m2s_data_p_del), .rx_lvds_data_n(m2s_data_n_del),
-    // .rx_lvds_data_p(m2s_data_p), .rx_lvds_data_n(m2s_data_n),
+    // .rx_lvds_clk_p(m2s_clk_p_del), .rx_lvds_clk_n(m2s_clk_n_del),
+    .rx_lvds_clk_p(m2s_clk_p), .rx_lvds_clk_n(m2s_clk_n),
+    // .rx_lvds_data_p(m2s_data_p_del), .rx_lvds_data_n(m2s_data_n_del),
+    .rx_lvds_data_p(m2s_data_p), .rx_lvds_data_n(m2s_data_n),
     // 用户接口
     .user_tx_data(slv_tx_data),
     .user_tx_valid(slv_tx_valid),
@@ -260,7 +320,7 @@ initial begin
     slv_rx_byte_cnt = 0;
     slv_rx_err_cnt = 0;
 
-    #100;
+    #3020;
     rst_n = 1;
 
     // 场景1：双向建链握手测试

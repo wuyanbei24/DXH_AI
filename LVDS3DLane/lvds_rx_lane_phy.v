@@ -80,19 +80,39 @@ reg  [7:0] align_check_cnt;
 reg  [3:0] bitslip_cnt;
 localparam MAX_BITSLIP = 4'd8;
 
+
+
+// IDELAY控制单元，每个IO Bank例化一个
+// wire idelayctrl_rdy;
+// IDELAYCTRL u_idelayctrl (
+    // .RDY    (idelayctrl_rdy),  // 校准就绪标志
+    // .REFCLK (ref_clk_200m),    // 200MHz参考时钟
+    // .RST    (~rst_n)           // 高有效复位
+// );
+
+
+
 // 差分输入缓冲
-IBUFDS #(.DIFF_TERM("TRUE"), .IOSTANDARD("LVDS_25")) u_ibufds_data (
-    .I(lvds_data_p), .IB(lvds_data_n), .O(data_ibuf)
+IBUFDS #(
+      .DIFF_TERM("FALSE"),       // Differential Termination
+      .IBUF_LOW_PWR("FALSE"),     // Low power="TRUE", Highest performance="FALSE" 
+      .IOSTANDARD("DEFAULT")     // Specify the input I/O standard
+) u_ibufds_data (
+    .I(lvds_data_p), 
+    .IB(lvds_data_n), 
+    .O(data_ibuf)
 );
 
 // 输入延迟单元
 IDELAYE2 #(
-    .IDELAY_TYPE    ("VAR_LOAD"),    // VAR_LOAD模式支持LD+CNTVALUEIN直接加载
-    .DELAY_SRC      ("IDATAIN"),
-    .IDELAY_VALUE   (0),
-    .REFCLK_FREQUENCY(200.0),
-    .HIGH_PERFORMANCE_MODE("TRUE"),
-    .SIGNAL_PATTERN ("DATA" ) // DATA, CLOCK input signal
+    .CINVCTRL_SEL("FALSE"),          // Enable dynamic clock inversion (FALSE, TRUE)
+    .DELAY_SRC("IDATAIN"),           // Delay input (IDATAIN, DATAIN)
+    .HIGH_PERFORMANCE_MODE("FALSE"), // Reduced jitter ("TRUE"), Reduced power ("FALSE")
+    .IDELAY_TYPE("VAR_LOAD"),           // FIXED, VARIABLE, VAR_LOAD, VAR_LOAD_PIPE
+    .IDELAY_VALUE(0),                // Input delay tap setting (0-31)
+    .PIPE_SEL("FALSE"),              // Select pipelined mode, FALSE, TRUE
+    .REFCLK_FREQUENCY(200.0),        // IDELAYCTRL clock input frequency in MHz (190.0-210.0, 290.0-310.0).
+    .SIGNAL_PATTERN("DATA")          // DATA, CLOCK input signal
 ) u_idelay_data (
     .IDATAIN    (data_ibuf),
     .DATAOUT    (data_delay),
@@ -100,8 +120,7 @@ IDELAYE2 #(
     .CE         (delay_ce),
     .CINVCTRL   (1'b0 ), // 1-bit input: Dynamic clock inversion input
     .INC        (delay_inc),
-    // .INC        (1'b0),
-    .LD         (delay_ld),
+    .LD         (delay_ld ),
     // .LD         (1'b1),
     .LDPIPEEN   (1'b0),
     .CNTVALUEIN (delay_cnt_val),
@@ -123,7 +142,8 @@ ISERDESE2 #(
     .INIT_Q4            (1'b0),
     .INTERFACE_TYPE     ("NETWORKING"),
     .IOBDELAY           ("IFD"),
-    .NUM_CE             (1),
+    //.IOBDELAY           ("IBUF"),
+    .NUM_CE             (2),
     .OFB_USED           ("FALSE"),
     .SERDES_MODE        ("MASTER"),
     .SRVAL_Q1           (1'b0), 
@@ -131,6 +151,8 @@ ISERDESE2 #(
     .SRVAL_Q3           (1'b0), 
     .SRVAL_Q4           (1'b0)
 ) u_iserdes_data (
+    .O(O),                       // 1-bit output: Combinatorial output
+      // Q1 - Q8: 1-bit (each) output: Registered data outputs
     .Q1(iserdes_q[0]), 
     .Q2(iserdes_q[1]), 
     .Q3(iserdes_q[2]), 
@@ -142,6 +164,7 @@ ISERDESE2 #(
     .SHIFTOUT1 (), 
     .SHIFTOUT2 (),
     .BITSLIP  (bitslip_req),
+    // .BITSLIP  (1'b0),
     .CE1      (1'b1), 
     .CE2      (1'b1),
     .CLKDIVP  (1'b0),
@@ -220,7 +243,6 @@ always @(posedge clk_div or negedge rst_n) begin
         delay_ce <= 1'b0;
         delay_ld <= 1'b0;
         scan_done <= 1'b0;
-
         case(d_curr_state)
             D_IDLE: begin
                 scan_step <= 5'd0;

@@ -68,7 +68,9 @@ wire rx_valid_raw;
 lvds_tx_channel #(
     .DATA_WIDTH(DATA_WIDTH), .CLK_FREQ(CLK_FREQ)
 ) u_tx (
-    .clk_ser(clk_ser), .clk_div(clk_div), .rst_n(rst_n),
+    .clk_ser(clk_ser), 
+    .clk_div(clk_div), 
+    .rst_n(rst_n),
     .train_en(tx_train_en),
     .ctrl_frame_send(ctrl_frame_send),
     .ctrl_frame_type(ctrl_frame_type_out),
@@ -76,8 +78,10 @@ lvds_tx_channel #(
     .tx_data_in(user_tx_data),
     .tx_data_valid(user_tx_valid & user_tx_en),
     .tx_ready(user_tx_ready),
-    .lvds_clk_p(tx_lvds_clk_p), .lvds_clk_n(tx_lvds_clk_n),
-    .lvds_data_p(tx_lvds_data_p), .lvds_data_n(tx_lvds_data_n)
+    .lvds_clk_p(tx_lvds_clk_p), 
+    .lvds_clk_n(tx_lvds_clk_n),
+    .lvds_data_p(tx_lvds_data_p), 
+    .lvds_data_n(tx_lvds_data_n)
 );
 
 // 接收通道
@@ -87,8 +91,10 @@ lvds_rx_channel #(
     .DATA_WIDTH(DATA_WIDTH)
 ) u_rx (
     .rst_n(rst_n),
-    .lvds_clk_p(rx_lvds_clk_p), .lvds_clk_n(rx_lvds_clk_n),
-    .lvds_data_p(rx_lvds_data_p), .lvds_data_n(rx_lvds_data_n),
+    .lvds_clk_p(rx_lvds_clk_p), 
+    .lvds_clk_n(rx_lvds_clk_n),
+    .lvds_data_p(rx_lvds_data_p), 
+    .lvds_data_n(rx_lvds_data_n),
     .ref_clk_200m(ref_clk_200m),
     .retrain_req(ext_retrain_req | rx_retrain_req),  // 【修正问题6】
     .clk_div(rx_clk_div),

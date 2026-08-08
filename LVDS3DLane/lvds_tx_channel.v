@@ -258,12 +258,14 @@ generate
             .SRVAL_OQ       (1'b0),
             .TBYTE_CTL      ("FALSE"),
             .TBYTE_SRC      ("FALSE"),
-            .TRISTATE_WIDTH (4)
+            .TRISTATE_WIDTH (1)
         ) u_oserdes_data (
             .OQ         (s_data_out[lane_idx]),
             .OFB        (),
-            .SHIFTOUT1  (), .SHIFTOUT2  (),
-            .TBYTEOUT   (), .TFB         (),
+            .SHIFTOUT1  (), 
+            .SHIFTOUT2  (),
+            .TBYTEOUT   (), 
+            .TFB         (),
             .TQ         (),
             .CLK        (clk_ser),
             .CLKDIV     (clk_div),
@@ -277,13 +279,24 @@ generate
             .D8         (tx_data_mux[lane_idx*8 + 7]),
             .OCE        (1'b1),
             .RST        (~rst_n),
-            .SHIFTIN1   (1'b0), .SHIFTIN2(1'b0),
-            .T1         (1'b0), .T2(1'b0), .T3(1'b0), .T4(1'b0),
-            .TBYTEIN    (1'b0), .TCE(1'b0)
+            .SHIFTIN1   (1'b0), 
+            .SHIFTIN2(1'b0),
+            .T1(1'b0), 
+            .T2(1'b0),
+            .T3(1'b0), 
+            .T4(1'b0),
+            .TBYTEIN    (1'b0), 
+            .TCE(1'b0)
         );
 
-        OBUFDS #(.IOSTANDARD("LVDS_25"), .SLEW("FAST")) u_obufds_data (
-            .O(lvds_data_p[lane_idx]), .OB(lvds_data_n[lane_idx]), .I(s_data_out[lane_idx])
+        OBUFDS #(
+            .IOSTANDARD("DEFAULT"), 
+            .SLEW("FAST")) 
+        u_obufds_data 
+        (
+            .O(lvds_data_p[lane_idx]), 
+            .OB(lvds_data_n[lane_idx]), 
+            .I(s_data_out[lane_idx])
         );
     end
 endgenerate
@@ -299,12 +312,14 @@ OSERDESE2 #(
     .SRVAL_OQ       (1'b0),
     .TBYTE_CTL      ("FALSE"),
     .TBYTE_SRC      ("FALSE"),
-    .TRISTATE_WIDTH (4)
+    .TRISTATE_WIDTH (1)
 ) u_oserdes_clk (
     .OQ         (s_clk_out),
     .OFB        (),
-    .SHIFTOUT1  (), .SHIFTOUT2  (),
-    .TBYTEOUT   (), .TFB         (),
+    .SHIFTOUT1  (), 
+    .SHIFTOUT2  (),
+    .TBYTEOUT   (), 
+    .TFB        (),
     .TQ         (),
     .CLK        (clk_ser),
     .CLKDIV     (clk_div),
@@ -319,7 +334,7 @@ OSERDESE2 #(
     .OCE        (1'b1),
     .RST        (~rst_n),
     .SHIFTIN1   (1'b0), 
-    .SHIFTIN2(1'b0),
+    .SHIFTIN2   (1'b0),
     .T1         (1'b0), 
     .T2(1'b0), 
     .T3(1'b0), 
@@ -328,8 +343,13 @@ OSERDESE2 #(
     .TCE(1'b0)
 );
 
-OBUFDS #(.IOSTANDARD("LVDS_25"), .SLEW("FAST")) u_obufds_clk (
-    .O(lvds_clk_p), .OB(lvds_clk_n), .I(s_clk_out)
+OBUFDS #(
+    .IOSTANDARD("DEFAULT"), 
+    .SLEW("FAST")) 
+u_obufds_clk (
+    .O(lvds_clk_p), 
+    .OB(lvds_clk_n), 
+    .I(s_clk_out)
 );
 
 endmodule
