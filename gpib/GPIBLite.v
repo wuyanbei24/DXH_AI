@@ -64,7 +64,11 @@ localparam INFO_RDY_DLY_CNT   =     32'd40_000_000 * INFO_RDY_DLY   ;       //�
 //外部输入信号时钟同步
 reg                         [7:0]   data_dly                ;
 reg                                 ifc_dly,atn_dly,ren_dly,eoi_dly,nrfd_dly,ndac_dly,dav_dly;
+reg                                 atn_ff0, atn_ff1          ;  //ATN 2级同步(快速)，仅用于 in-FIFO 数据捕获门控
 reg                         [31:0]  atn_32_dly              ;
+// 跨时钟域输入两级同步寄存器（GPIB 总线信号相对 sys_clk 异步）
+reg                         [7:0]   data_dly1               ;
+reg                                 ifc_dly1,ren_dly1,eoi_dly1,nrfd_dly1,ndac_dly1,dav_dly1;
 
 //----------------------------------------------------------------------------------------
 //GPIB接口寄存器定义
@@ -172,6 +176,7 @@ wire                        [7:0]   GPIB_Data_M1_r          ;               //AP
 reg                         [7:0]   GPIB_Data_M1_w          ;               //M1到APB的数据
 wire                        [7:0]   GPIB_Data_FPGA_r        ;               //GPIB到FPGA的数据
 wire                        [7:0]   GPIB_Data_FPGA_w        ;               //FPGA到GPIB的数据
+reg                         [7:0]   GPIB_Data_FPGA_w_hold   ;               //发送数据保持寄存器(修复 FWFT 读指针提前推进导致首字节丢失)
 wire                                GPIB_outfifo_empty      ;               //GPIB发送数据fifo空信号
 wire                                GPIB_outfifo_full       ;               //GPIB发送数据fifo满信号
 wire                        [10:0]  GPIB_outfifo_num        ;
@@ -183,27 +188,71 @@ reg                                 eoiOut_can_set          ;
 
 
 //----------------------------------------------------------------------------------------
+//跨时钟域同步：APB_PCLK -> sys_clk
+//配置寄存器 GPIB_Ctl_En / GPIB_Addr 在 APB_PCLK 域写入，被 sys_clk 域状态机使用；
+//GPIB_outfifo_full 在 APB 写侧产生，被 sys_clk 域错误 FSM 使用。采用 2 级同步器。
+//----------------------------------------------------------------------------------------
+reg                                 GPIB_Ctl_En_sync0, GPIB_Ctl_En_sync1          ;
+reg                         [4:0]   GPIB_Addr_sync0,   GPIB_Addr_sync1            ;
+reg                                 GPIB_outfifo_full_sync0, GPIB_outfifo_full_sync1;
+always @(posedge sys_clk or negedge sys_rstn) begin
+    if(~sys_rstn) begin
+        GPIB_Ctl_En_sync0          <= 1'b0;            GPIB_Ctl_En_sync1          <= 1'b0;
+        GPIB_Addr_sync0            <= 5'd0;            GPIB_Addr_sync1            <= 5'd0;
+        GPIB_outfifo_full_sync0    <= 1'b0;            GPIB_outfifo_full_sync1    <= 1'b0;
+    end else begin
+        GPIB_Ctl_En_sync0          <= GPIB_Ctl_En;             GPIB_Ctl_En_sync1          <= GPIB_Ctl_En_sync0;
+        GPIB_Addr_sync0            <= GPIB_Addr;               GPIB_Addr_sync1            <= GPIB_Addr_sync0;
+        GPIB_outfifo_full_sync0    <= GPIB_outfifo_full;       GPIB_outfifo_full_sync1    <= GPIB_outfifo_full_sync0;
+    end
+end
+wire                                GPIB_Ctl_En_sys      = GPIB_Ctl_En_sync1        ;
+wire                        [4:0]   GPIB_Addr_sys        = GPIB_Addr_sync1          ;
+wire                                GPIB_outfifo_full_sys= GPIB_outfifo_full_sync1  ;
+// sys->APB 同步结果（声明提前，供 read_data 组合逻辑使用；赋值见文件后部 assign）
+wire                                GPIB_State_apb        ;
+wire                                GPIB_outfifo_empty_apb;
+
+//----------------------------------------------------------------------------------------
 //外部输入信号时钟同步
 always @(posedge sys_clk or negedge sys_rstn) begin 
     if(~sys_rstn) begin 
+        data_dly1           <=      8'd0                    ;
         data_dly            <=      8'd0                    ;
+        ifc_dly1            <=      1'b0                    ;
         ifc_dly             <=      1'b0                    ;
         atn_32_dly          <=      32'd0                   ;
+        atn_ff0             <=      1'b1                    ;  //ATN 默认释放(高)=数据阶段
+        atn_ff1             <=      1'b1                    ;
+        ren_dly1            <=      1'b0                    ;
         ren_dly             <=      1'b0                    ;
+        eoi_dly1            <=      1'b0                    ;
         eoi_dly             <=      1'b0                    ;
+        nrfd_dly1           <=      1'b0                    ;
         nrfd_dly            <=      1'b0                    ;
+        ndac_dly1           <=      1'b0                    ;
         ndac_dly            <=      1'b0                    ;
+        dav_dly1            <=      1'b0                    ;
         dav_dly             <=      1'b0                    ;
     end
     else begin 
-        data_dly            <=      data                    ;
-        ifc_dly             <=      ifc                     ;
+        data_dly1           <=      data                    ;
+        data_dly            <=      data_dly1               ;
+        ifc_dly1            <=      ifc                     ;
+        ifc_dly             <=      ifc_dly1                ;
         atn_32_dly          <=      {atn_32_dly[30:0],atn}  ;
-        ren_dly             <=      ren                     ;
-        eoi_dly             <=      eoi                     ;
-        nrfd_dly            <=      nrfd                    ;
-        ndac_dly            <=      ndac                    ;
-        dav_dly             <=      dav                     ;
+        atn_ff0             <=      atn                     ;
+        atn_ff1             <=      atn_ff0                 ;
+        ren_dly1            <=      ren                     ;
+        ren_dly             <=      ren_dly1                ;
+        eoi_dly1            <=      eoi                     ;
+        eoi_dly             <=      eoi_dly1                ;
+        nrfd_dly1           <=      nrfd                    ;
+        nrfd_dly            <=      nrfd_dly1               ;
+        ndac_dly1           <=      ndac                    ;
+        ndac_dly            <=      ndac_dly1               ;
+        dav_dly1            <=      dav                     ;
+        dav_dly             <=      dav_dly1                ;
     end 
 end
 //----------------------------------------------------------------------------------------
@@ -239,7 +288,7 @@ always@(posedge APB_PCLK or negedge APB_PRESET) begin
         GPIB_Ctl_IRQ_T_Clr  <=      1'b0                    ;
         GPIB_Addr           <=      5'd1                    ;
     end
-    else if(write_enable & APB_PREADY) begin 
+    else if(write_enable) begin 
         case (APB_PADDR[15:0])
             16'h0010    : GPIB_Data_M1_w                <=          APB_PWDATA[7:0]     ;
             16'h0014    : begin 
@@ -268,7 +317,7 @@ always @(*) begin
     case (APB_PADDR[15:0])
         16'h0010: read_data =       {24'd0,GPIB_Data_M1_r}  ;
         16'h0014: read_data =       {24'd0,GPIB_Addr,3'd0,GPIB_Ctl_IRQ_T_Clr,GPIB_Ctl_IRQ_R_Clr,GPIB_Ctl_IRQ_T_En,GPIB_Ctl_IRQ_R_En,GPIB_Ctl_En};
-        16'h0018: read_data =       {29'd0,~GPIB_infifo_empty,~GPIB_outfifo_empty,GPIB_State};
+        16'h0018: read_data =       {29'd0,~GPIB_infifo_empty,~GPIB_outfifo_empty_apb,GPIB_State_apb};
         16'h001C: read_data =       32'h21101312            ;
         default : read_data =       {32{1'b0}}              ;               // x propogation
     endcase
@@ -284,6 +333,25 @@ always @(posedge APB_PCLK or negedge APB_PRESET) begin
 end 
 
 assign APB_PSLVERR          =       1'b0                    ;
+
+//----------------------------------------------------------------------------------------
+//跨时钟域同步：sys_clk -> APB_PCLK
+//状态信号 GPIB_State / GPIB_outfifo_empty 在 sys_clk 域产生，被 APB 状态寄存器读取。
+//采用 2 级同步器（GPIB_infifo_empty 来自 in-FIFO 读侧，本就在 APB_PCLK 域，无需同步）。
+//----------------------------------------------------------------------------------------
+reg                                 GPIB_State_sync0, GPIB_State_sync1          ;
+reg                                 GPIB_outfifo_empty_sync0, GPIB_outfifo_empty_sync1;
+always @(posedge APB_PCLK or negedge APB_PRESET) begin
+    if(~APB_PRESET) begin
+        GPIB_State_sync0           <= 1'b0;            GPIB_State_sync1           <= 1'b0;
+        GPIB_outfifo_empty_sync0   <= 1'b1;            GPIB_outfifo_empty_sync1   <= 1'b1;
+    end else begin
+        GPIB_State_sync0           <= GPIB_State;                    GPIB_State_sync1           <= GPIB_State_sync0;
+        GPIB_outfifo_empty_sync0   <= GPIB_outfifo_empty;            GPIB_outfifo_empty_sync1   <= GPIB_outfifo_empty_sync0;
+    end
+end
+assign                              GPIB_State_apb        = GPIB_State_sync1        ;
+assign                              GPIB_outfifo_empty_apb= GPIB_outfifo_empty_sync1;
 
 //----------------------------------------------------------------------------------------
 //GPIB发送FIFO的写使能
@@ -335,13 +403,28 @@ end
 
 
 //----------------------------------------------------------------------------------------
+//发送数据保持寄存器：
+//  源方握手 SH 在 SGNS 态对异步 FWFT 发送 FIFO 发起一次读(GPIB_outfifo_r 脉冲)，
+//  FIFO 读指针随之推进，Q 在下一拍变为下一字节；而 data 是组合逻辑直驱
+//  (~GPIB_Data_FPGA_w)，导致 STRS(DAV 有效)阶段总线呈现的是"被读后的下一字节"，
+//  真正被读出的首字节从未发出 => 接收端观察到稳定的 +1 偏移并在末尾回绕。
+//  修复：在 SIDS(空闲)态锁存当前 FIFO 输出字，整个 SDYS/STRS/SWNS 期间保持稳定，
+//  保证发出的正是被读取的字。(属于 CDC 验证过程中发现的发送数据通路功能 bug)
+always @(posedge sys_clk or negedge GPIB_dvire_rstn) begin
+    if(~GPIB_dvire_rstn)
+        GPIB_Data_FPGA_w_hold   <=      8'd0                    ;
+    else if(GPIB_SH_State == GPIB_SH_SIDS)
+        GPIB_Data_FPGA_w_hold   <=      GPIB_Data_FPGA_w        ;
+end
+
+//----------------------------------------------------------------------------------------
 //IO延时同步时钟域
 assign GPIB_Data_FPGA_r     =       ~data_dly               ;
 assign eoiIn                =       ~eoi_dly                ;
 assign davIn                =       ~dav_dly                ;
 assign nrfdIn               =       ~nrfd_dly               ;
 assign ndacIn               =       ~ndac_dly               ;
-assign data                 =       GPIB_State      ? (~GPIB_Data_FPGA_w) : 8'bz;
+assign data                 =       GPIB_State      ? (~GPIB_Data_FPGA_w_hold) : 8'bz;
 assign eoi                  =       GPIB_State      ? (~eoiOut)           : 1'bz;
 assign dav                  =       GPIB_State      ? (~davOut)           : 1'bz;
 assign nrfd                 =       (~GPIB_State)   ? (~nrfdOut)          : 1'bz;
@@ -385,7 +468,7 @@ always @(posedge sys_clk or negedge GPIB_dvire_rstn) begin
     else if((~atn_dly) & LADS & ACDS) begin 
         case (GPIB_Data_FPGA_r[6:5])
             2'b01 : begin 
-                if((GPIB_Addr == GPIB_Data_FPGA_r[4:0]) && M1_ready_information) begin 
+                if((GPIB_Addr_sys == GPIB_Data_FPGA_r[4:0]) && M1_ready_information) begin 
                     LAD     <=      1'b1                    ;
                 end
                 else begin 
@@ -394,7 +477,7 @@ always @(posedge sys_clk or negedge GPIB_dvire_rstn) begin
             end
 
             2'b10 : begin 
-                if((GPIB_Addr == GPIB_Data_FPGA_r[4:0]) && M1_ready_information) begin 
+                if((GPIB_Addr_sys == GPIB_Data_FPGA_r[4:0]) && M1_ready_information) begin 
                     TAD     <=      1'b1                    ;
                 end
                 else begin 
@@ -426,7 +509,7 @@ always @(posedge sys_clk or negedge GPIB_dvire_rstn) begin
     else
         eoiOut_can_set      <=      eoiOut_can_set          ;
 end
-assign eoiOut               =       (GPIB_State & atn_dly & (GPIB_Data_FPGA_w == 8'h0A) & eoiOut_can_set) ? 1'b1 : 1'b0;
+assign eoiOut               =       (GPIB_State & atn_dly & (GPIB_Data_FPGA_w_hold == 8'h0A) & eoiOut_can_set) ? 1'b1 : 1'b0;
 //always @(posedge sys_clk or negedge GPIB_dvire_rstn) begin 
 //    if(~GPIB_dvire_rstn)
 //        eoiOut              <=      1'b0                    ;
@@ -443,7 +526,14 @@ assign eoiOut               =       (GPIB_State & atn_dly & (GPIB_Data_FPGA_w ==
 always @(posedge sys_clk or negedge GPIB_dvire_rstn) begin 
     if(~GPIB_dvire_rstn)
         GPIB_infifo_w       <=      1'b0                    ;
-    else if(GPIB_Ctl_En & LACS & ACDS)
+    // Bug4 修复：in-FIFO 写必须限定在"数据阶段"(ATN 释放)。
+    // atn_dly 为 32 级移位(专为 NRFD 就绪时序保留)，在 ATN 断言后的 32 周期同步窗口内
+    // 仍残留为 1，导致 LACS 仍为 stale-1，控者发来的命令字节(UNL/UNT/MLA)被 AH 握手接受(ACDS)
+    // 并误写入 in-FIFO —— 表现为循环监听时 in-FIFO 前缀出现 3F/5F、数据整体偏移、尾部 SEND_TIMEOUT。
+    // 因此数据捕获改用快速 2 级同步 ATN(atn_ff1)：ATN 释放(atn_ff1==1)即数据阶段，命中的是真实 ATN，
+    // 命令阶段(atn_ff1==0)绝不被写入。L/T 状态机仍用 32 级 atn_dly 以满足 NI 的 110ns NRFD 时序，
+    // 而 TB 会在 atn_dly 生效(LACS 置位)后才发数据，故用 atn_ff1 门控不会漏掉任何真实数据字节。
+    else if(GPIB_Ctl_En_sys & atn_ff1 & LACS & ACDS)
         GPIB_infifo_w       <=      1'b1                    ;
     else
         GPIB_infifo_w       <=      1'b0                    ;
@@ -538,6 +628,13 @@ always @(posedge sys_clk or negedge sys_rstn) begin
     LACS                    <=      1'b0                    ;
     GPIB_L_State            <=      2'd0                    ;
 end
+  else if (TACS) begin
+    // 讲者作用态(TACS)与听者作用态(LACS)互斥：被寻址为讲者时立即清除听者角色，
+    // 避免设备同时处于讲者/听者双角色，导致自身发送的字节被自身 AH(受者)握手写回 in-FIFO。
+    // (CDC 验证中暴露的"talk 数据回灌 in-FIFO"功能 bug；此前 LAD 听地址锁存未被清，
+    //  ATN 释放后 L 状态机在 LAD 仍置位时重新断言 LACS。)
+    LIDS <= 1'b1; LADS <= 1'b0; LACS <= 1'b0; LAD <= 1'b0; GPIB_L_State <= 2'd0;
+  end
   else
     case (GPIB_L_State)
         2'd0 : begin 
@@ -930,7 +1027,7 @@ always @(posedge sys_clk or negedge GPIB_dvire_rstn) begin
     else if(GPIB_error == 8'd0) begin 
         if(GPIB_infifo_full)
             GPIB_error      <=      8'd1                    ;
-        else if(GPIB_outfifo_full)
+        else if(GPIB_outfifo_full_sys)
             GPIB_error      <=      8'd2                    ;
         else 
             GPIB_error      <=      GPIB_error              ;

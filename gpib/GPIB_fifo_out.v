@@ -37,13 +37,13 @@ module GPIB_fifo_out #
         .FULL_RESET_VALUE   (1),
         .PROG_EMPTY_THRESH  (10),
         .PROG_FULL_THRESH   (10),
-        .RD_DATA_COUNT_WIDTH(5),
+        .RD_DATA_COUNT_WIDTH(11),
         .READ_DATA_WIDTH    (DATA_WIDTH),
         .READ_MODE          ("fwft"),           // 首字直通，SH 状态机每次脉冲读一字
         .RELATED_CLOCKS     (0),                // 异步时钟（若两时钟同源可设 1）
         .USE_ADV_FEATURES   ("0707"),           // 使能 wr/rd data count
         .WAKEUP_TIME        (0),
-        .WR_DATA_COUNT_WIDTH(5),
+        .WR_DATA_COUNT_WIDTH(11),               // 与 Wnum[10:0] 位宽一致
         .WRITE_DATA_WIDTH   (DATA_WIDTH)
     ) u_xpm_fifo_async (
         .rst            (Reset),

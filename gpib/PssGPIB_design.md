@@ -6,7 +6,7 @@
 | 功能 | GPIB（IEEE-488）Talker/Listener 控制器，APB 从接口 |
 | 目标器件 | Xilinx FPGA（Vivado / XPM FIFO） |
 | 文件清单 | `PssGPIB.v`、`GPIB_fifo_in.v`、`GPIB_fifo_out.v` |
-| 版本 | v1.1（FIFO 改用 Xilinx XPM 异步 FIFO，修复 CDC） |
+| 版本 | v1.2（CDC 验证：修复 4 项功能 bug + TB 建模缺陷） |
 | 日期 | 2026-08-09 |
 
 ---
@@ -178,6 +178,9 @@
 | `LIDS` | `(~ren_dly | ~atn_dly) & ~LADS` | `LADS` |
 | `LADS` | `atn_dly & LAD & ~LACS` | `LACS` |
 | `LACS` | `(~atn_dly) & ~LADS` | `LADS` |
+| `*`（任意） | `TACS`（讲者作用态） | `LIDS`（清 `LADS/LACS/LAD`） |
+
+> **讲者/听者互斥（v1.2 新增）**：`L` 状态机最高优先级分支 `else if (TACS)` 在被寻址为讲者时立即清零听者角色（`LIDS/LADS/LACS/LAD`）。否则设备会同时处于讲者/听者双角色，自身发出的字节被自身 AH 握手写回 in-FIFO（见 §13 Bug 3）。
 
 ### 6.3 讲者 T（复位：`GPIB_dvire_rstn`）
 | 现态 | 条件 | 次态 |
@@ -274,6 +277,8 @@ GPIB_fifo_out : .WrClk(APB_PCLK) .RdClk(sys_clk) .Data(GPIB_Data_M1_w)
 ### 8.1 ATN 去抖延时
 `atn` 经 32 级移位寄存器 `atn_32_dly`，`atn_dly <= atn_32_dly[31]`，约 **32 个 sys_clk**（@40MHz≈800ns）。用于吸收 NI/Keysight 在 ATN 与 NRFD 之间的时序差（实测约 110ns）。如两控者差异更大可加大级数。
 
+> **快速 ATN 同步（v1.2 新增，`atn_ff0/atn_ff1`，2 级）**：`atn_dly`（32 级）专用于 L/T 状态机的身份切换时序（满足 NRFD 就绪要求）。但 in-FIFO 的**数据捕获**必须以“真实 ATN”为门控——ATN 断言后的 32 周期同步窗口内 `atn_dly` 仍残留为 1，会令 `LACS` 残留为 1 并将命令字节误当作数据写入（见 §13 Bug 4）。故 in-FIFO 写条件 `GPIB_Ctl_En_sys & atn_ff1 & LACS & ACDS` 改用 2 级同步 `atn_ff1`：ATN 释放（=`1`）即数据阶段，命令阶段（`=0`）绝不被写入；TB 在 `atn_dly` 生效（`LACS` 置位）后才发数据，故不漏真实数据。这是与设计既有 CDC 方法论（§9）一致的、对“数据捕获”这一特定路径的精确化。
+
 ### 8.2 上电就绪门控
 - 计数 `INFO_RDY_DLY_CNT = 40_000_000 × INFO_RDY_DLY`（默认 35），即约 **35 秒 @40MHz**。
 - `M1_ready_information` 置位前，指令译码**不**把本设备设为 `LAD/TAD` → 控者扫描时本设备“不在线”。
@@ -347,3 +352,33 @@ GPIB_fifo_out : .WrClk(APB_PCLK) .RdClk(sys_clk) .Data(GPIB_Data_M1_w)
 |---|---|---|
 | v1.0 | 2023-06 | 初始版本（FIFO 为外部占位，单时钟假设） |
 | v1.1 | 2026-08-09 | FIFO 改用 Xilinx XPM 异步 FIFO（`GPIB_fifo_in/out.v`），实例化改为双时钟接口，消除跨时钟域 CDC 风险；补充本详细设计文档 |
+| v1.2 | 2026-08-09 | CDC 验证（ModelSim SE-64 10.6d + 行为级 XPM 模型）暴露并修复 4 项功能 bug：① 讲者首字节丢失（FWFT 读指针提前推进 → 发送保持寄存器 `GPIB_Data_FPGA_w_hold`）；② 角色切换 X 污染（TB 角色沉降等待）；③ 讲者/听者双角色致自身数据回灌 in-FIFO（L 状态机 `TACS` 互斥分支）；④ 循环监听命令字节误写入 in-FIFO（in-FIFO 写改用快速 2 级同步 ATN `atn_ff1` 门控）。详见 §13 |
+
+---
+
+## 13. CDC 验证与 Bug 修复记录（v1.2）
+
+本节对应验证报告 `GPIBLite_verification.md`。仿真环境：`sys_clk=40MHz`、`apb_clk≈27.8MHz`（非整数倍 + 相位差，真实异步 CDC）、ModelSim SE-64 10.6d、行为级 FWFT FIFO 模型 `xpm_fifo_async_beh.v`（未装 Vivado，上板前须换回 XPM 原语）。**结论：13/13 用例 PASS，编译 0 错误 0 警告。**
+
+### 13.1 Bug 1 — 讲者首字节丢失（FWFT 读指针提前推进）
+- **根因**：SH 在 `SGNS` 对 FWFT out-FIFO 发起读，`data=~Q` 组合直驱；`rd_en` 后下一拍读指针推进，`STRS` 阶段总线已呈现下一字节，**首字节从未发出** → 接收整体 `+1` 偏移、末位回绕。
+- **修复**：新增 `GPIB_Data_FPGA_w_hold`，在 `SIDS` 锁存本字节，`data`/`eoiOut` 改用保持值。
+
+### 13.2 Bug 2 — 角色切换 X 污染（TB 建模）
+- **根因**：TB 在 DUT 仍为讲者（约 32 周期 `atn_dly` 窗口）时驱动 `dav`，开漏总线双端驱动产生 `X` 灌入 AH → 握手死锁 `SEND_TIMEOUT`。
+- **修复**：TB 在驱动 `dav` 前等 `GPIB_State==0`、驱动 `nrfd/ndac` 前等 `TACS==1`；`pullup` 原语避免 `Z→X`。
+
+### 13.3 Bug 3 — 讲者/听者双角色致自身数据回灌 in-FIFO
+- **根因**：`LACS` 与 `TACS` 未互斥，ATN 释放且 `LAD` 仍置位时 L 状态机重装 `LACS`，设备同时讲/听，自身发送字节被自身 AH 写回 in-FIFO。
+- **修复**：L 状态机最高优先级分支 `else if (TACS)` 清零 `LIDS/LADS/LACS/LAD`（见 §6.2）。
+
+### 13.4 Bug 4 — 循环监听命令字节误写入 in-FIFO（CDC 相关数据捕获缺陷）
+- **根因**：`atn_dly` 为 32 级移位（NI 的 110 ns NRFD 时序保留），ATN 断言后的 32 周期同步窗口内 `atn_dly` 残留为 1，`LACS` 残留为 1，命令字节（UNL/UNT/MLA）被 AH 接受（`ACDS`）并误写入 in-FIFO，表现为 in-FIFO 前缀 `3F/5F`、数据偏移、尾部 `SEND_TIMEOUT`。
+- **修复**：in-FIFO 写条件由 `LACS & ACDS` 改为 `atn_ff1 & LACS & ACDS`，改用 2 级同步快速 ATN；L/T 状态机保留 32 级 `atn_dly` 以满足 NRFD 时序。调试确认 in-FIFO 仅含真实数据字节。
+
+### 13.5 TB 修复 — `test_clear` 缺 UNT
+- `test_clear` 原为 `UNL/MLA`，前一轮讲者残留 `TAD=1`，ATN 释放后设备重回讲者（`TACS`）→ `SEND_TIMEOUT`。改为 `UNL/UNT/MLA` 与 `test_listen` 一致。
+
+### 13.6 验证用例一览（13 项）
+ID 寄存器（1）、控制默认（1）、监听首测 N=16（1）、讲者首测 N=16（1）、循环 `listen→talk` N=8 ×4（各 4）、器件清除 IFC（1）。详见验证报告 §2。
+
