@@ -1,5 +1,5 @@
 
-module PssGPIB #
+module GPIBLite #
 (
     parameter                       INFO_RDY_DLY    =   8'd35   
 )(
@@ -896,28 +896,30 @@ always @(posedge sys_clk or negedge sys_rstn) begin
 end 
 
 GPIB_fifo_in u_GPIB_fifo_in_0(
+    .WrClk                          (sys_clk                ),              //写侧时钟 : GPIB数据到达 (sys_clk 域)
+    .RdClk                          (APB_PCLK               ),              //读侧时钟 : APB读取 (APB_PCLK 域)
     .Data                           (GPIB_Data_FPGA_r       ),              //input [7:0] Data
-    .Clk                            (sys_clk                ),              //input Clk
     .WrEn                           (GPIB_infifo_w && (GPIB_infifo_w_dly == 1'b0)),              //input WrEn
     .RdEn                           (GPIB_infifo_r          ),              //input RdEn
-    .Reset                          (~GPIB_dvire_rstn       ),              //input Reset
-    .Q                              (GPIB_Data_M1_r         ),              //output [7:0] Q
-    .Empty                          (GPIB_infifo_empty      ),              //output Empty
-    .Full                           (GPIB_infifo_full       )               //output Full
+    .Reset                          (~GPIB_dvire_rstn       ),              //input Reset (高有效)
+    .Q                              (GPIB_Data_M1_r         ),              //output [7:0] Q (APB_PCLK 域)
+    .Empty                          (GPIB_infifo_empty      ),              //output Empty (APB_PCLK 域)
+    .Full                           (GPIB_infifo_full       )               //output Full (sys_clk 域)
 );
 
 //----------------------------------------------------------------------------------------
 //GPIB从FPGA获取的数据
 GPIB_fifo_out u_GPIB_fifo_out_0(
-    .Data                           (GPIB_Data_M1_w         ),              //input [7:0] Data
-    .Clk                            (sys_clk                ),              //input Clk
-    .WrEn                           (GPIB_outfifo_w         ),              //input WrEn
-    .RdEn                           (GPIB_outfifo_r         ),              //input RdEn
-    .Reset                          (~GPIB_dvire_rstn       ),              //input Reset
-    .Wnum                           (GPIB_outfifo_num       ),              //output [10:0] Wnum
-    .Q                              (GPIB_Data_FPGA_w       ),              //output [7:0] Q
-    .Empty                          (GPIB_outfifo_empty     ),              //output Empty
-    .Full                           (GPIB_outfifo_full      )               //output Full
+    .WrClk                          (APB_PCLK               ),              //写侧时钟 : APB写入 (APB_PCLK 域)
+    .RdClk                          (sys_clk                ),              //读侧时钟 : GPIB发送 (sys_clk 域)
+    .Data                           (GPIB_Data_M1_w         ),              //input [7:0] Data (APB_PCLK 域)
+    .WrEn                           (GPIB_outfifo_w         ),              //input WrEn (APB_PCLK 域)
+    .RdEn                           (GPIB_outfifo_r         ),              //input RdEn (sys_clk 域)
+    .Reset                          (~GPIB_dvire_rstn       ),              //input Reset (高有效)
+    .Wnum                           (GPIB_outfifo_num       ),              //output [10:0] Wnum (APB_PCLK 域)
+    .Q                              (GPIB_Data_FPGA_w       ),              //output [7:0] Q (sys_clk 域)
+    .Empty                          (GPIB_outfifo_empty     ),              //output Empty (sys_clk 域)
+    .Full                           (GPIB_outfifo_full      )               //output Full (APB_PCLK 域)
 );
 
 //----------------------------------------------------------------------------------------
