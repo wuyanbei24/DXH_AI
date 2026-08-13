@@ -1,0 +1,252 @@
+m255
+K4
+z2
+13
+!s112 1.1
+!i10d 8192
+!i10e 25
+!i10f 100
+cModel Technology
+Z0 dF:/wc.prj/pulse_mfpga/src/DXH_AI/LVDS1DLane/sim
+T_opt
+!s110 1786368294
+V1^2N7X0_;_HSZL7kbN1KG0
+04 27 4 work lvds_1lane_bidirectional_tb fast 0
+04 4 4 work glbl fast 0
+=1-54e1ad008802-6a79d126-116-3e38
+o-quiet -auto_acc_if_foreign -work work -L unisims_ver -L secureip -L unimacro_ver -L simprims_ver -L xpm -L unifast -L unifast_ver -L unisim -L unimacro -L xilinx_vip
+Z1 tCvgOpt 0
+n@_opt
+OL;O;10.6d;65
+vglbl
+Z2 !s110 1786368293
+!i10b 1
+!s100 JWZ^meD<P7inSF0<1SiO32
+IjA0WJMmTT2^M]:X4k5`A?1
+Z3 VDg1SIo80bB@j0V0VzS_@n1
+R0
+Z4 w1786365292
+8../rtl/glbl.v
+F../rtl/glbl.v
+L0 6
+Z5 OL;L;10.6d;65
+r1
+!s85 0
+31
+Z6 !s108 1786368293.000000
+Z7 !s107 ../rtl/mfpga_clk_ip_sim_netlist.v|../rtl/mfpga_clk_ip.v|../rtl/lvds_tx_channel_1lane.v|../rtl/lvds_rx_phy_1lane.v|../rtl/lvds_rx_link_1lane.v|../rtl/lvds_rx_lane_phy.v|../rtl/lvds_rx_channel_1lane.v|../rtl/lvds_link_manager.v|../rtl/lvds_bidirectional_top_1lane.v|../rtl/glbl.v|
+Z8 !s90 -work|work|../rtl/glbl.v|../rtl/lvds_bidirectional_top_1lane.v|../rtl/lvds_link_manager.v|../rtl/lvds_rx_channel_1lane.v|../rtl/lvds_rx_lane_phy.v|../rtl/lvds_rx_link_1lane.v|../rtl/lvds_rx_phy_1lane.v|../rtl/lvds_tx_channel_1lane.v|../rtl/mfpga_clk_ip.v|../rtl/mfpga_clk_ip_sim_netlist.v|
+!i113 0
+Z9 o-work work -L mtiAvm -L mtiRnm -L mtiOvm -L mtiUvm -L mtiUPF -L infact
+R1
+vlvds_1lane_bidirectional_tb
+R2
+!i10b 1
+!s100 FD6M4[VO<N@`ah]Oc[79Y2
+IehicO3adaHYZ<n0oozXjF3
+R3
+R0
+w1786368282
+8lvds_1lane_bidirectional_tb.v
+Flvds_1lane_bidirectional_tb.v
+L0 16
+R5
+r1
+!s85 0
+31
+R6
+!s107 lvds_1lane_bidirectional_tb.v|
+!s90 -work|work|+incdir+../rtl|lvds_1lane_bidirectional_tb.v|
+!i113 0
+R9
+!s92 -work work +incdir+../rtl -L mtiAvm -L mtiRnm -L mtiOvm -L mtiUvm -L mtiUPF -L infact
+R1
+vlvds_bidirectional_top_1lane
+R2
+!i10b 1
+!s100 n:Tn4`F4XF^ND?Fkojg]D3
+IETX`h?:zW=<D;M2gCKiA]1
+R3
+R0
+w1786365608
+8../rtl/lvds_bidirectional_top_1lane.v
+F../rtl/lvds_bidirectional_top_1lane.v
+L0 9
+R5
+r1
+!s85 0
+31
+R6
+R7
+R8
+!i113 0
+R9
+R1
+vlvds_link_manager
+R2
+!i10b 1
+!s100 F:2ezK=RloMUzDM7bLnVf1
+IcH04PK9okFN@?]6514XY;2
+R3
+R0
+R4
+8../rtl/lvds_link_manager.v
+F../rtl/lvds_link_manager.v
+L0 14
+R5
+r1
+!s85 0
+31
+R6
+R7
+R8
+!i113 0
+R9
+R1
+vlvds_rx_channel_1lane
+R2
+!i10b 1
+!s100 eTM5QX_5jEn5BSh@WLP;M0
+Ii=zRZZb9z`@RDWb=<aPZd2
+R3
+R0
+w1786365569
+8../rtl/lvds_rx_channel_1lane.v
+F../rtl/lvds_rx_channel_1lane.v
+L0 8
+R5
+r1
+!s85 0
+31
+R6
+R7
+R8
+!i113 0
+R9
+R1
+vlvds_rx_lane_phy
+R2
+!i10b 1
+!s100 n]:Mi6;63gHfJSQFhh^Ln2
+ISaBR4=^`N]o_dgRH8^k[_2
+R3
+R0
+R4
+8../rtl/lvds_rx_lane_phy.v
+F../rtl/lvds_rx_lane_phy.v
+Z10 L0 13
+R5
+r1
+!s85 0
+31
+R6
+R7
+R8
+!i113 0
+R9
+R1
+vlvds_rx_link_1lane
+R2
+!i10b 1
+!s100 E<SIZmfWVf]U4cTZa5?Fk2
+I`1h[FhoFhSXkh>`PETcZa1
+R3
+R0
+w1786365477
+8../rtl/lvds_rx_link_1lane.v
+F../rtl/lvds_rx_link_1lane.v
+Z11 L0 12
+R5
+r1
+!s85 0
+31
+R6
+R7
+R8
+!i113 0
+R9
+R1
+vlvds_rx_phy_1lane
+R2
+!i10b 1
+!s100 l[TMnneda@]b<4ol@@OV73
+IOj?_`[9_<E:YL;[2BJ4m42
+R3
+R0
+w1786365844
+8../rtl/lvds_rx_phy_1lane.v
+F../rtl/lvds_rx_phy_1lane.v
+R11
+R5
+r1
+!s85 0
+31
+R6
+R7
+R8
+!i113 0
+R9
+R1
+vlvds_tx_channel_1lane
+R2
+!i10b 1
+!s100 RkiNoWnYLi9B2`QD_<TWH1
+I7VZic6YbiojBNK`Q<^E7S1
+R3
+R0
+w1786365407
+8../rtl/lvds_tx_channel_1lane.v
+F../rtl/lvds_tx_channel_1lane.v
+R10
+R5
+r1
+!s85 0
+31
+R6
+R7
+R8
+!i113 0
+R9
+R1
+vmfpga_clk_ip
+R2
+!i10b 1
+!s100 U5XPN=G4U^5=TjTD1Wo:N2
+I`YMClI8@?`M^hkhMkTOeU2
+R3
+R0
+Z12 w1786365291
+Z13 8../rtl/mfpga_clk_ip_sim_netlist.v
+Z14 F../rtl/mfpga_clk_ip_sim_netlist.v
+L0 15
+R5
+r1
+!s85 0
+31
+R6
+R7
+R8
+!i113 0
+R9
+R1
+vmfpga_clk_ip_mfpga_clk_ip_clk_wiz
+R2
+!i10b 1
+!s100 [3iF8Xi;02A]U]=P=zic50
+IzXYc=gDB`6H8Uzml^2M0o3
+R3
+R0
+R12
+R13
+R14
+L0 58
+R5
+r1
+!s85 0
+31
+R6
+R7
+R8
+!i113 0
+R9
+R1

@@ -1,0 +1,303 @@
+m255
+K4
+z2
+13
+!s112 1.1
+!i10d 8192
+!i10e 25
+!i10f 100
+cModel Technology
+Z0 dF:/wc.prj/pulse_mfpga/src/DXH_AI/ps2pl_cmu/sim/dut/xsim_build
+vaxi_lite_slave
+Z1 !s110 1786493685
+!i10b 1
+!s100 7ioIWicH7<Mcm5ZFPNWnW1
+Ij`06<`75XXPSRFQ8;?iNS2
+Z2 VDg1SIo80bB@j0V0VzS_@n1
+R0
+w1786491000
+8F:/wc.prj/pulse_mfpga/src/DXH_AI/ps2pl_cmu/sim/dut/axi_lite_slave.v
+FF:/wc.prj/pulse_mfpga/src/DXH_AI/ps2pl_cmu/sim/dut/axi_lite_slave.v
+L0 1
+Z3 OL;L;10.6d;65
+r1
+!s85 0
+31
+Z4 !s108 1786493684.000000
+Z5 !s107 F:/wc.prj/pulse_mfpga/src/DXH_AI/ps2pl_cmu/sim/tb_ps2pl_cmu.v|F:/wc.prj/pulse_mfpga/src/DXH_AI/ps2pl_cmu/sim/debug/dbg_t6.v|F:/wc.prj/pulse_mfpga/src/DXH_AI/ps2pl_cmu/sim/debug/dbg3.v|F:/wc.prj/pulse_mfpga/src/DXH_AI/ps2pl_cmu/sim/debug/dbg2.v|F:/wc.prj/pulse_mfpga/src/DXH_AI/ps2pl_cmu/sim/debug2/tb_dbg.v|F:/wc.prj/pulse_mfpga/src/DXH_AI/ps2pl_cmu/sim/debug2/bram_model.v|F:/wc.prj/pulse_mfpga/src/DXH_AI/ps2pl_cmu/sim/bram_model.v|F:/wc.prj/pulse_mfpga/src/DXH_AI/ps2pl_cmu/sim/dut/tx_data_path.v|F:/wc.prj/pulse_mfpga/src/DXH_AI/ps2pl_cmu/sim/dut/rx_data_path.v|F:/wc.prj/pulse_mfpga/src/DXH_AI/ps2pl_cmu/sim/dut/pl_bram_comm_top.v|F:/wc.prj/pulse_mfpga/src/DXH_AI/ps2pl_cmu/sim/dut/ctrl_reg_bank.v|F:/wc.prj/pulse_mfpga/src/DXH_AI/ps2pl_cmu/sim/dut/axi_lite_slave.v|
+Z6 !s90 -work|work|-L|unisim|-L|unisims_ver|-L|unimacro|-L|unimacro_ver|-L|unifast|-L|unifast_ver|-L|secureip|-L|xpm|F:/wc.prj/pulse_mfpga/src/DXH_AI/ps2pl_cmu/sim/dut/axi_lite_slave.v|F:/wc.prj/pulse_mfpga/src/DXH_AI/ps2pl_cmu/sim/dut/ctrl_reg_bank.v|F:/wc.prj/pulse_mfpga/src/DXH_AI/ps2pl_cmu/sim/dut/pl_bram_comm_top.v|F:/wc.prj/pulse_mfpga/src/DXH_AI/ps2pl_cmu/sim/dut/rx_data_path.v|F:/wc.prj/pulse_mfpga/src/DXH_AI/ps2pl_cmu/sim/dut/tx_data_path.v|F:/wc.prj/pulse_mfpga/src/DXH_AI/ps2pl_cmu/sim/bram_model.v|F:/wc.prj/pulse_mfpga/src/DXH_AI/ps2pl_cmu/sim/debug2/bram_model.v|F:/wc.prj/pulse_mfpga/src/DXH_AI/ps2pl_cmu/sim/debug2/tb_dbg.v|F:/wc.prj/pulse_mfpga/src/DXH_AI/ps2pl_cmu/sim/debug/dbg2.v|F:/wc.prj/pulse_mfpga/src/DXH_AI/ps2pl_cmu/sim/debug/dbg3.v|F:/wc.prj/pulse_mfpga/src/DXH_AI/ps2pl_cmu/sim/debug/dbg_t6.v|F:/wc.prj/pulse_mfpga/src/DXH_AI/ps2pl_cmu/sim/dut/axi_lite_slave.v|F:/wc.prj/pulse_mfpga/src/DXH_AI/ps2pl_cmu/sim/dut/ctrl_reg_bank.v|F:/wc.prj/pulse_mfpga/src/DXH_AI/ps2pl_cmu/sim/dut/pl_bram_comm_top.v|F:/wc.prj/pulse_mfpga/src/DXH_AI/ps2pl_cmu/sim/dut/rx_data_path.v|F:/wc.prj/pulse_mfpga/src/DXH_AI/ps2pl_cmu/sim/dut/tx_data_path.v|F:/wc.prj/pulse_mfpga/src/DXH_AI/ps2pl_cmu/sim/tb_ps2pl_cmu.v|
+!i113 0
+Z7 o-work work -L unisim -L unisims_ver -L unimacro -L unimacro_ver -L unifast -L unifast_ver -L secureip -L xpm -L mtiAvm -L mtiRnm -L mtiOvm -L mtiUvm -L mtiUPF -L infact
+Z8 tCvgOpt 0
+vctrl_reg_bank
+R1
+!i10b 1
+!s100 9Sda?POhzi@QSJIRPcUf?1
+I4_oV84[4F:AZRCVXUBBII1
+R2
+R0
+w1786493649
+8F:/wc.prj/pulse_mfpga/src/DXH_AI/ps2pl_cmu/sim/dut/ctrl_reg_bank.v
+FF:/wc.prj/pulse_mfpga/src/DXH_AI/ps2pl_cmu/sim/dut/ctrl_reg_bank.v
+L0 1
+R3
+r1
+!s85 0
+31
+R4
+R5
+R6
+!i113 0
+R7
+R8
+vdbg2
+Z9 !s110 1786493042
+!i10b 1
+!s100 Z^:ZzLKRD]50aGah;0TGD0
+IJhUaX6bPe]BL:gf9ehPGd3
+R2
+R0
+w1786491219
+8F:/wc.prj/pulse_mfpga/src/DXH_AI/ps2pl_cmu/sim/debug/dbg2.v
+FF:/wc.prj/pulse_mfpga/src/DXH_AI/ps2pl_cmu/sim/debug/dbg2.v
+L0 2
+R3
+r1
+!s85 0
+31
+Z10 !s108 1786493042.000000
+R5
+R6
+!i113 0
+R7
+R8
+vdbg3
+R9
+!i10b 1
+!s100 Pn;E;_B<`266Cnm5gK4bi2
+IbJ?^_o>c9i`TOP;m@c=9m2
+R2
+R0
+w1786491475
+8F:/wc.prj/pulse_mfpga/src/DXH_AI/ps2pl_cmu/sim/debug/dbg3.v
+FF:/wc.prj/pulse_mfpga/src/DXH_AI/ps2pl_cmu/sim/debug/dbg3.v
+L0 2
+R3
+r1
+!s85 0
+31
+R10
+R5
+R6
+!i113 0
+R7
+R8
+vdbg_t6
+R9
+!i10b 1
+!s100 @]_2=_dCe<d6i;g@d1ZMo3
+IDA986QP6_Qjz<EL2EPdOG1
+R2
+R0
+w1786491137
+8F:/wc.prj/pulse_mfpga/src/DXH_AI/ps2pl_cmu/sim/debug/dbg_t6.v
+FF:/wc.prj/pulse_mfpga/src/DXH_AI/ps2pl_cmu/sim/debug/dbg_t6.v
+L0 2
+R3
+r1
+!s85 0
+31
+R10
+R5
+R6
+!i113 0
+R7
+R8
+vglbl
+Z11 !s110 1786493173
+!i10b 1
+!s100 JWZ^meD<P7inSF0<1SiO32
+IIaZ[J5E7D6lSZ2hQQ[T0@0
+R2
+R0
+w1529022455
+8E:/EDA/Xilinx/Vivado/2018.2/data/verilog/src/glbl.v
+FE:/EDA/Xilinx/Vivado/2018.2/data/verilog/src/glbl.v
+L0 6
+R3
+r1
+!s85 0
+31
+Z12 !s108 1786493173.000000
+!s107 E:/EDA/Xilinx/Vivado/2018.2/data/verilog/src/glbl.v|
+!s90 -work|work|E:/EDA/Xilinx/Vivado/2018.2/data/verilog/src/glbl.v|
+!i113 0
+o-work work -L mtiAvm -L mtiRnm -L mtiOvm -L mtiUvm -L mtiUPF -L infact
+R8
+vpl_bram_comm_top
+R1
+!i10b 1
+!s100 Wgg6GZezP_loP_:1W_R=m1
+IAPkTjI=PjQIZE5Un]J[eE1
+R2
+R0
+Z13 w1786463166
+8F:/wc.prj/pulse_mfpga/src/DXH_AI/ps2pl_cmu/sim/dut/pl_bram_comm_top.v
+FF:/wc.prj/pulse_mfpga/src/DXH_AI/ps2pl_cmu/sim/dut/pl_bram_comm_top.v
+L0 1
+R3
+r1
+!s85 0
+31
+R4
+R5
+R6
+!i113 0
+R7
+R8
+vrx_bram_ip
+R1
+!i10b 1
+!s100 fRdL<@NS175=QLgbjK7H<2
+IL5BXIJg[hk@g3AJ93m6Do3
+R2
+R0
+Z14 w1786492003
+Z15 8F:/wc.prj/pulse_mfpga/src/DXH_AI/ps2pl_cmu/sim/debug2/bram_model.v
+Z16 FF:/wc.prj/pulse_mfpga/src/DXH_AI/ps2pl_cmu/sim/debug2/bram_model.v
+L0 52
+R3
+r1
+!s85 0
+31
+R4
+R5
+R6
+!i113 0
+R7
+R8
+vrx_data_path
+R1
+!i10b 1
+!s100 =VcNDYZ5ZD[CL1^jn6Y?J1
+I=OWnjTmGkW]gnF6A^h<ec2
+R2
+R0
+R13
+8F:/wc.prj/pulse_mfpga/src/DXH_AI/ps2pl_cmu/sim/dut/rx_data_path.v
+FF:/wc.prj/pulse_mfpga/src/DXH_AI/ps2pl_cmu/sim/dut/rx_data_path.v
+L0 1
+R3
+r1
+!s85 0
+31
+R4
+R5
+R6
+!i113 0
+R7
+R8
+vtb_dbg
+R11
+!i10b 1
+!s100 e?dmg4Tg>j>2;1hmk6IC_3
+In:W>HoZ?begXGnRT3_[Io2
+R2
+R0
+w1786493152
+8F:/wc.prj/pulse_mfpga/src/DXH_AI/ps2pl_cmu/sim/debug2/tb_dbg.v
+FF:/wc.prj/pulse_mfpga/src/DXH_AI/ps2pl_cmu/sim/debug2/tb_dbg.v
+L0 3
+R3
+r1
+!s85 0
+31
+R12
+!s107 F:/wc.prj/pulse_mfpga/src/DXH_AI/ps2pl_cmu/sim/dut/tx_data_path.v|F:/wc.prj/pulse_mfpga/src/DXH_AI/ps2pl_cmu/sim/dut/rx_data_path.v|F:/wc.prj/pulse_mfpga/src/DXH_AI/ps2pl_cmu/sim/dut/pl_bram_comm_top.v|F:/wc.prj/pulse_mfpga/src/DXH_AI/ps2pl_cmu/sim/dut/ctrl_reg_bank.v|F:/wc.prj/pulse_mfpga/src/DXH_AI/ps2pl_cmu/sim/dut/axi_lite_slave.v|F:/wc.prj/pulse_mfpga/src/DXH_AI/ps2pl_cmu/sim/debug2/tb_dbg.v|F:/wc.prj/pulse_mfpga/src/DXH_AI/ps2pl_cmu/sim/debug2/bram_model.v|
+!s90 -work|work|-L|unisim|-L|unisims_ver|-L|unimacro|-L|unimacro_ver|-L|unifast|-L|unifast_ver|-L|secureip|-L|xpm|F:/wc.prj/pulse_mfpga/src/DXH_AI/ps2pl_cmu/sim/debug2/bram_model.v|F:/wc.prj/pulse_mfpga/src/DXH_AI/ps2pl_cmu/sim/debug2/tb_dbg.v|F:/wc.prj/pulse_mfpga/src/DXH_AI/ps2pl_cmu/sim/dut/axi_lite_slave.v|F:/wc.prj/pulse_mfpga/src/DXH_AI/ps2pl_cmu/sim/dut/ctrl_reg_bank.v|F:/wc.prj/pulse_mfpga/src/DXH_AI/ps2pl_cmu/sim/dut/pl_bram_comm_top.v|F:/wc.prj/pulse_mfpga/src/DXH_AI/ps2pl_cmu/sim/dut/rx_data_path.v|F:/wc.prj/pulse_mfpga/src/DXH_AI/ps2pl_cmu/sim/dut/tx_data_path.v|
+!i113 0
+R7
+R8
+Ttb_dbg_opt
+!s110 1786493174
+VGJAM3WUMRUEY::QILkULk2
+04 6 4 work tb_dbg fast 0
+Z17 04 4 4 work glbl fast 0
+Z18 o+acc=rb -L unisim -L unisims_ver -L unimacro -L unimacro_ver -L unifast -L unifast_ver -L secureip -L xpm
+R8
+ntb_dbg_opt
+Z19 OL;O;10.6d;65
+R0
+vtb_ps2pl_cmu
+R9
+!i10b 1
+!s100 QI0HNX[]IDJzf1dLD?zOl3
+IT0jYBcDWP_Jhc]OoEzgVz1
+R2
+R0
+w1786492661
+8F:/wc.prj/pulse_mfpga/src/DXH_AI/ps2pl_cmu/sim/tb_ps2pl_cmu.v
+FF:/wc.prj/pulse_mfpga/src/DXH_AI/ps2pl_cmu/sim/tb_ps2pl_cmu.v
+L0 20
+R3
+r1
+!s85 0
+31
+R10
+R5
+R6
+!i113 0
+R7
+R8
+Ttb_ps2pl_cmu_opt
+!s110 1786493043
+V?BkXl?in7jSji8PZ9P]XH2
+04 12 4 work tb_ps2pl_cmu fast 0
+R17
+R18
+R8
+ntb_ps2pl_cmu_opt
+R19
+R0
+vtx_bram_ip
+R1
+!i10b 1
+!s100 O6FDM<YPX16ekJcI<edCJ3
+I8V^^<P_ENIBV`j6eGeHeh3
+R2
+R0
+R14
+R15
+R16
+L0 19
+R3
+r1
+!s85 0
+31
+R4
+R5
+R6
+!i113 0
+R7
+R8
+vtx_data_path
+R1
+!i10b 1
+!s100 7JFJLBA6_Vm[1_1d;BoQ42
+IKgiGhQSS<ULGMSb@cWgHC1
+R2
+R0
+R13
+8F:/wc.prj/pulse_mfpga/src/DXH_AI/ps2pl_cmu/sim/dut/tx_data_path.v
+FF:/wc.prj/pulse_mfpga/src/DXH_AI/ps2pl_cmu/sim/dut/tx_data_path.v
+L0 1
+R3
+r1
+!s85 0
+31
+R4
+R5
+R6
+!i113 0
+R7
+R8

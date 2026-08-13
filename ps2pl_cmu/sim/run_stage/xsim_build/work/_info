@@ -1,0 +1,208 @@
+m255
+K4
+z2
+13
+!s112 1.1
+!i10d 8192
+!i10e 25
+!i10f 100
+cModel Technology
+Z0 dF:/wc.prj/pulse_mfpga/src/DXH_AI/ps2pl_cmu/sim/run_stage/xsim_build
+vaxi_lite_slave
+Z1 !s110 1786494677
+!i10b 1
+!s100 7ioIWicH7<Mcm5ZFPNWnW1
+IKnzF8YLa>:Ame<<3X?e<n0
+Z2 VDg1SIo80bB@j0V0VzS_@n1
+R0
+Z3 w1786493710
+8F:/wc.prj/pulse_mfpga/src/DXH_AI/ps2pl_cmu/sim/run_stage/axi_lite_slave.v
+FF:/wc.prj/pulse_mfpga/src/DXH_AI/ps2pl_cmu/sim/run_stage/axi_lite_slave.v
+L0 1
+Z4 OL;L;10.6d;65
+r1
+!s85 0
+31
+Z5 !s108 1786494677.000000
+Z6 !s107 F:/wc.prj/pulse_mfpga/src/DXH_AI/ps2pl_cmu/sim/run_stage/tx_data_path.v|F:/wc.prj/pulse_mfpga/src/DXH_AI/ps2pl_cmu/sim/run_stage/tb_ps2pl_cmu.v|F:/wc.prj/pulse_mfpga/src/DXH_AI/ps2pl_cmu/sim/run_stage/rx_data_path.v|F:/wc.prj/pulse_mfpga/src/DXH_AI/ps2pl_cmu/sim/run_stage/pl_bram_comm_top.v|F:/wc.prj/pulse_mfpga/src/DXH_AI/ps2pl_cmu/sim/run_stage/ctrl_reg_bank.v|F:/wc.prj/pulse_mfpga/src/DXH_AI/ps2pl_cmu/sim/run_stage/bram_model.v|F:/wc.prj/pulse_mfpga/src/DXH_AI/ps2pl_cmu/sim/run_stage/axi_lite_slave.v|
+Z7 !s90 -work|work|-L|unisim|-L|unisims_ver|-L|unimacro|-L|unimacro_ver|-L|unifast|-L|unifast_ver|-L|secureip|-L|xpm|F:/wc.prj/pulse_mfpga/src/DXH_AI/ps2pl_cmu/sim/run_stage/axi_lite_slave.v|F:/wc.prj/pulse_mfpga/src/DXH_AI/ps2pl_cmu/sim/run_stage/bram_model.v|F:/wc.prj/pulse_mfpga/src/DXH_AI/ps2pl_cmu/sim/run_stage/ctrl_reg_bank.v|F:/wc.prj/pulse_mfpga/src/DXH_AI/ps2pl_cmu/sim/run_stage/pl_bram_comm_top.v|F:/wc.prj/pulse_mfpga/src/DXH_AI/ps2pl_cmu/sim/run_stage/rx_data_path.v|F:/wc.prj/pulse_mfpga/src/DXH_AI/ps2pl_cmu/sim/run_stage/tb_ps2pl_cmu.v|F:/wc.prj/pulse_mfpga/src/DXH_AI/ps2pl_cmu/sim/run_stage/tx_data_path.v|
+!i113 0
+Z8 o-work work -L unisim -L unisims_ver -L unimacro -L unimacro_ver -L unifast -L unifast_ver -L secureip -L xpm -L mtiAvm -L mtiRnm -L mtiOvm -L mtiUvm -L mtiUPF -L infact
+Z9 tCvgOpt 0
+vctrl_reg_bank
+R1
+!i10b 1
+!s100 ;9>2OFfRkHzi:SPJDV1EF0
+I18S:`hz:eOAH71i@E?<NL0
+R2
+R0
+R3
+8F:/wc.prj/pulse_mfpga/src/DXH_AI/ps2pl_cmu/sim/run_stage/ctrl_reg_bank.v
+FF:/wc.prj/pulse_mfpga/src/DXH_AI/ps2pl_cmu/sim/run_stage/ctrl_reg_bank.v
+L0 1
+R4
+r1
+!s85 0
+31
+R5
+R6
+R7
+!i113 0
+R8
+R9
+vglbl
+R1
+!i10b 1
+!s100 JWZ^meD<P7inSF0<1SiO32
+IIaZ[J5E7D6lSZ2hQQ[T0@0
+R2
+R0
+w1529022455
+8E:/EDA/Xilinx/Vivado/2018.2/data/verilog/src/glbl.v
+FE:/EDA/Xilinx/Vivado/2018.2/data/verilog/src/glbl.v
+L0 6
+R4
+r1
+!s85 0
+31
+R5
+!s107 E:/EDA/Xilinx/Vivado/2018.2/data/verilog/src/glbl.v|
+!s90 -work|work|E:/EDA/Xilinx/Vivado/2018.2/data/verilog/src/glbl.v|
+!i113 0
+o-work work -L mtiAvm -L mtiRnm -L mtiOvm -L mtiUvm -L mtiUPF -L infact
+R9
+vpl_bram_comm_top
+R1
+!i10b 1
+!s100 `<VY]nk8h:T38R=:dPN7i0
+I7C8eA1Ib@CaBQ4@`Z:ScO3
+R2
+R0
+R3
+8F:/wc.prj/pulse_mfpga/src/DXH_AI/ps2pl_cmu/sim/run_stage/pl_bram_comm_top.v
+FF:/wc.prj/pulse_mfpga/src/DXH_AI/ps2pl_cmu/sim/run_stage/pl_bram_comm_top.v
+L0 1
+R4
+r1
+!s85 0
+31
+R5
+R6
+R7
+!i113 0
+R8
+R9
+vrx_bram_ip
+R1
+!i10b 1
+!s100 fRdL<@NS175=QLgbjK7H<2
+I1Qln1D;JY9`OHb7<Z6AGO0
+R2
+R0
+R3
+Z10 8F:/wc.prj/pulse_mfpga/src/DXH_AI/ps2pl_cmu/sim/run_stage/bram_model.v
+Z11 FF:/wc.prj/pulse_mfpga/src/DXH_AI/ps2pl_cmu/sim/run_stage/bram_model.v
+L0 52
+R4
+r1
+!s85 0
+31
+R5
+R6
+R7
+!i113 0
+R8
+R9
+vrx_data_path
+R1
+!i10b 1
+!s100 i@c<DHFR<0SW`5B]gOhe;3
+I27@WLLO:az0[DnCD[0_Yk1
+R2
+R0
+w1786494359
+8F:/wc.prj/pulse_mfpga/src/DXH_AI/ps2pl_cmu/sim/run_stage/rx_data_path.v
+FF:/wc.prj/pulse_mfpga/src/DXH_AI/ps2pl_cmu/sim/run_stage/rx_data_path.v
+L0 1
+R4
+r1
+!s85 0
+31
+R5
+R6
+R7
+!i113 0
+R8
+R9
+vtb_ps2pl_cmu
+R1
+!i10b 1
+!s100 kHC61Ah75RLU[E=j@SG?L1
+If56b[6]7P=KRBUGXQDJGb3
+R2
+R0
+w1786494672
+8F:/wc.prj/pulse_mfpga/src/DXH_AI/ps2pl_cmu/sim/run_stage/tb_ps2pl_cmu.v
+FF:/wc.prj/pulse_mfpga/src/DXH_AI/ps2pl_cmu/sim/run_stage/tb_ps2pl_cmu.v
+L0 20
+R4
+r1
+!s85 0
+31
+R5
+R6
+R7
+!i113 0
+R8
+R9
+Ttb_ps2pl_cmu_opt
+!s110 1786494678
+VCf]TOg[=6TXP1@NR6=G9J0
+04 12 4 work tb_ps2pl_cmu fast 0
+04 4 4 work glbl fast 0
+o+acc=rb -L unisim -L unisims_ver -L unimacro -L unimacro_ver -L unifast -L unifast_ver -L secureip -L xpm
+R9
+ntb_ps2pl_cmu_opt
+OL;O;10.6d;65
+vtx_bram_ip
+R1
+!i10b 1
+!s100 O6FDM<YPX16ekJcI<edCJ3
+I9?6zM:D3co=3PPK;61IV_2
+R2
+R0
+R3
+R10
+R11
+L0 19
+R4
+r1
+!s85 0
+31
+R5
+R6
+R7
+!i113 0
+R8
+R9
+vtx_data_path
+R1
+!i10b 1
+!s100 4VVL>VclnkmVTCBab6R8^0
+ISV6MSKk><6o]j3YQi[9O52
+R2
+R0
+R3
+8F:/wc.prj/pulse_mfpga/src/DXH_AI/ps2pl_cmu/sim/run_stage/tx_data_path.v
+FF:/wc.prj/pulse_mfpga/src/DXH_AI/ps2pl_cmu/sim/run_stage/tx_data_path.v
+L0 1
+R4
+r1
+!s85 0
+31
+R5
+R6
+R7
+!i113 0
+R8
+R9

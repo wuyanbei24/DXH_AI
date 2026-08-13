@@ -1,0 +1,314 @@
+m255
+K4
+z2
+13
+!s112 1.1
+!i10d 8192
+!i10e 25
+!i10f 100
+cModel Technology
+Z0 dF:/wc.prj/pulse_mfpga/src/DXH_AI/LVDS3DLane/sim
+T_opt
+!s110 1786369195
+V;7GWEbGP@O_mkN^GInPC33
+04 27 4 work lvds_3lane_bidirectional_tb fast 0
+04 4 4 work glbl fast 0
+=1-54e1ad008802-6a79d4aa-34-5974
+o-quiet -auto_acc_if_foreign -work work -L unisims_ver -L secureip -L unimacro_ver -L simprims_ver -L xpm -L unifast -L unifast_ver -L unisim -L unimacro -L xilinx_vip
+Z1 tCvgOpt 0
+n@_opt
+OL;O;10.6d;65
+vglbl
+Z2 !s110 1786369192
+!i10b 1
+!s100 JWZ^meD<P7inSF0<1SiO32
+I9Q[Kf6=bRmfKQ:^YATGAA2
+Z3 VDg1SIo80bB@j0V0VzS_@n1
+R0
+w1529022455
+8./glbl.v
+F./glbl.v
+L0 6
+Z4 OL;L;10.6d;65
+r1
+!s85 0
+31
+Z5 !s108 1786369192.000000
+Z6 !s107 ./mfpga_clk_ip_sim_netlist.v|./mfpga_clk_ip.v|./lvds_rx_pll_sim_netlist.v|./lvds_3lane_bidirectional_tb.v|./glbl.v|
+Z7 !s90 -work|work|./glbl.v|./lvds_3lane_bidirectional_tb.v|./lvds_rx_pll_sim_netlist.v|./mfpga_clk_ip.v|./mfpga_clk_ip_sim_netlist.v|
+!i113 0
+Z8 o-work work -L mtiAvm -L mtiRnm -L mtiOvm -L mtiUvm -L mtiUPF -L infact
+R1
+vlane_deskew
+R2
+!i10b 1
+!s100 clDOI499g7c`CASFU9V<C2
+IcVNGM37DRddP<RMSU6noO0
+R3
+R0
+w1786276230
+8../rtl/lane_deskew.v
+F../rtl/lane_deskew.v
+Z9 L0 13
+R4
+r1
+!s85 0
+31
+R5
+Z10 !s107 ../rtl/lvds_tx_channel.v|../rtl/lvds_rx_pll.v|../rtl/lvds_rx_phy.v|../rtl/lvds_rx_link.v|../rtl/lvds_rx_lane_phy.v|../rtl/lvds_rx_channel.v|../rtl/lvds_link_manager.v|../rtl/lvds_bidirectional_top.v|../rtl/lane_deskew.v|
+Z11 !s90 -work|work|../rtl/lane_deskew.v|../rtl/lvds_bidirectional_top.v|../rtl/lvds_link_manager.v|../rtl/lvds_rx_channel.v|../rtl/lvds_rx_lane_phy.v|../rtl/lvds_rx_link.v|../rtl/lvds_rx_phy.v|../rtl/lvds_rx_pll.v|../rtl/lvds_tx_channel.v|
+!i113 0
+R8
+R1
+vlvds_3lane_bidirectional_tb
+R2
+!i10b 1
+!s100 G7d1[hcE5bX3PP:2T;3O72
+I0U6mP]=WAO`LTEFD>1^kU1
+R3
+R0
+w1786368800
+8./lvds_3lane_bidirectional_tb.v
+F./lvds_3lane_bidirectional_tb.v
+Z12 L0 15
+R4
+r1
+!s85 0
+31
+R5
+R6
+R7
+!i113 0
+R8
+R1
+vlvds_bidirectional_top
+R2
+!i10b 1
+!s100 eT[=7YK93_HH4Z;TAJCRB1
+IQMG>56keQ4=[zUOQ?C_BR1
+R3
+R0
+w1786183166
+8../rtl/lvds_bidirectional_top.v
+F../rtl/lvds_bidirectional_top.v
+L0 10
+R4
+r1
+!s85 0
+31
+R5
+R10
+R11
+!i113 0
+R8
+R1
+vlvds_link_manager
+R2
+!i10b 1
+!s100 F:2ezK=RloMUzDM7bLnVf1
+IcH04PK9okFN@?]6514XY;2
+R3
+R0
+w1786181133
+8../rtl/lvds_link_manager.v
+F../rtl/lvds_link_manager.v
+Z13 L0 14
+R4
+r1
+!s85 0
+31
+R5
+R10
+R11
+!i113 0
+R8
+R1
+vlvds_rx_channel
+R2
+!i10b 1
+!s100 FW:eLQ^[01[1=_WF;[`eR3
+Icnz50;WfJ]XkL6ne[YecJ2
+R3
+R0
+w1786183153
+8../rtl/lvds_rx_channel.v
+F../rtl/lvds_rx_channel.v
+L0 9
+R4
+r1
+!s85 0
+31
+R5
+R10
+R11
+!i113 0
+R8
+R1
+vlvds_rx_lane_phy
+R2
+!i10b 1
+!s100 n]:Mi6;63gHfJSQFhh^Ln2
+ISaBR4=^`N]o_dgRH8^k[_2
+R3
+R0
+w1786181887
+8../rtl/lvds_rx_lane_phy.v
+F../rtl/lvds_rx_lane_phy.v
+R9
+R4
+r1
+!s85 0
+31
+R5
+R10
+R11
+!i113 0
+R8
+R1
+vlvds_rx_link
+R2
+!i10b 1
+!s100 170KW@lXU[SU0fNlHMGn30
+ImZBk?hkA8Q9IUBSHW0A;93
+R3
+R0
+w1786276233
+8../rtl/lvds_rx_link.v
+F../rtl/lvds_rx_link.v
+Z14 L0 12
+R4
+r1
+!s85 0
+31
+R5
+R10
+R11
+!i113 0
+R8
+R1
+vlvds_rx_phy
+R2
+!i10b 1
+!s100 Q;khW^Mkf^g?1M]`aY_A]0
+Im@224:aNX_a:R?KZ4Ml0A3
+R3
+R0
+w1786276235
+8../rtl/lvds_rx_phy.v
+F../rtl/lvds_rx_phy.v
+R13
+R4
+r1
+!s85 0
+31
+R5
+R10
+R11
+!i113 0
+R8
+R1
+vlvds_rx_pll
+R2
+!i10b 1
+!s100 feYF?7Acljn0znP8SEzAU0
+IFD8?YLnMBW1>zk6_2k9@Z1
+R3
+R0
+Z15 w1786145172
+Z16 8./lvds_rx_pll_sim_netlist.v
+Z17 F./lvds_rx_pll_sim_netlist.v
+L0 16
+R4
+r1
+!s85 0
+31
+R5
+R6
+R7
+!i113 0
+R8
+R1
+vlvds_rx_pll_lvds_rx_pll_clk_wiz
+R2
+!i10b 1
+!s100 f71JBgc205YXH<]MW`;h71
+Ii1CQfaBK4=4QldL7MQE6?3
+R3
+R0
+R15
+R16
+R17
+L0 35
+R4
+r1
+!s85 0
+31
+R5
+R6
+R7
+!i113 0
+R8
+R1
+vlvds_tx_channel
+R2
+!i10b 1
+!s100 aQ^jRCQfaU[VOz?^hOBI>3
+I]SO0G3`QYXb0KF5U4]QFk0
+R3
+R0
+w1786276243
+8../rtl/lvds_tx_channel.v
+F../rtl/lvds_tx_channel.v
+R14
+R4
+r1
+!s85 0
+31
+R5
+R10
+R11
+!i113 0
+R8
+R1
+vmfpga_clk_ip
+R2
+!i10b 1
+!s100 U5XPN=G4U^5=TjTD1Wo:N2
+IIWI39I75Jz]:RD^jIO>GK2
+R3
+R0
+Z18 w1784993363
+Z19 8./mfpga_clk_ip_sim_netlist.v
+Z20 F./mfpga_clk_ip_sim_netlist.v
+R12
+R4
+r1
+!s85 0
+31
+R5
+R6
+R7
+!i113 0
+R8
+R1
+vmfpga_clk_ip_mfpga_clk_ip_clk_wiz
+R2
+!i10b 1
+!s100 [3iF8Xi;02A]U]=P=zic50
+I;T7E?1hbg@9d0Uz;WG9BJ2
+R3
+R0
+R18
+R19
+R20
+L0 58
+R4
+r1
+!s85 0
+31
+R5
+R6
+R7
+!i113 0
+R8
+R1
