@@ -62,7 +62,7 @@ module tlk1221_axis_top
     input  wire                         PL_SFP_RBC0,
     input  wire                         PL_SFP_RBC1,
     input  wire                         PL_SFP_SYNC,
-    input  wire                         PL_SFP_CLK,
+    output wire                         PL_SFP_CLK,
     
     // 控制输出
     output wire                         PL_SFP_SYNCEN,
@@ -125,6 +125,26 @@ assign clk_phy_tx = clk_user;
       .O(clk_phy_rx), // 1-bit output: Clock output
       .I(PL_SFP_RBC0)  // 1-bit input: Clock input
    );
+
+// 发送参考时钟 REFCLK 输出到 TLK1221（PL_SFP_CLK）
+// 用户确认（q-1）：FPGA 内部 MMCM 生成 100MHz（即 clk_user），经本 ODDR 转发为芯片 REFCLK。
+// 原代码 PL_SFP_CLK 声明为 output 但从未驱动 -> 芯片无参考时钟、链路必死（旧报告 CLK-3）。
+// 采用 ODDR（D1=1,D2=0）转发：保证输出 50% 占空比、无相位偏斜的干净时钟。
+// 前提：clk_user 必须由顶层经 BUFG 进入本模块（其已作为 clk_phy_tx 使用）。
+ODDR #(
+    .DDR_CLK_EDGE("SAME_EDGE"),
+    .INIT(1'b0),
+    .SRTYPE("SYNC"),
+    .DRTYPE("SYNC")
+) u_oddr_refclk (
+    .Q (PL_SFP_CLK),   // 输出到 TLK1221 REFCLK 引脚
+    .C (clk_user),     // 100MHz 参考时钟（= clk_phy_tx）
+    .CE(1'b1),
+    .D1(1'b1),
+    .D2(1'b0),
+    .R (1'b0),
+    .S (1'b0)
+);
 
 
 // ====================== PHY 侧复位同步（异步复位同步释放） ======================
