@@ -1,0 +1,61 @@
+m255
+K4
+z2
+13
+!s112 1.1
+!i10d 8192
+!i10e 25
+!i10f 100
+cModel Technology
+Z0 dF:/wc.prj/pulse_mfpga/src/DXH_AI/axis32_to_lvds8/sim
+T_opt
+!s110 1786711571
+V<YU7iaoaB]jX=Sn?MQ_km0
+04 18 4 work tb_axis32_to_lvds8 fast 0
+=1-54e1ad008802-6a7f0e13-21e-39f4
+o-quiet -auto_acc_if_foreign -work work -L work
+Z1 tCvgOpt 0
+n@_opt
+OL;O;10.6d;65
+vaxis32_to_lvds8
+Z2 !s110 1786711570
+!i10b 1
+!s100 1FUi1EKgTdelbE_m7_?oD3
+I`7nN7W@`98K>CJ2fF4n:f3
+Z3 VDg1SIo80bB@j0V0VzS_@n1
+R0
+w1786711120
+8../rtl/axis32_to_lvds8.v
+F../rtl/axis32_to_lvds8.v
+L0 27
+Z4 OL;L;10.6d;65
+r1
+!s85 0
+31
+Z5 !s108 1786711570.000000
+!s107 ../rtl/axis32_to_lvds8.v|
+!s90 -work|work|+acc|../rtl/axis32_to_lvds8.v|
+!i113 0
+Z6 o-work work +acc -L mtiAvm -L mtiRnm -L mtiOvm -L mtiUvm -L mtiUPF -L infact
+R1
+vtb_axis32_to_lvds8
+R2
+!i10b 1
+!s100 2^ziG>_^L_fk<W4SM>:^22
+IEz5P5KGSU9V<d?kCaK;W41
+R3
+R0
+w1786711548
+8../sim/tb_axis32_to_lvds8.v
+F../sim/tb_axis32_to_lvds8.v
+L0 23
+R4
+r1
+!s85 0
+31
+R5
+!s107 ../sim/tb_axis32_to_lvds8.v|
+!s90 -work|work|+acc|../sim/tb_axis32_to_lvds8.v|
+!i113 0
+R6
+R1

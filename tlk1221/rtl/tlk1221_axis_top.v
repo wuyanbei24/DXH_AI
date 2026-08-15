@@ -107,17 +107,24 @@ wire [9:0]                  tlk_rx_data_bus;
 
 // ====================== 时钟缓冲 ======================
 // 发送参考时钟单端全局缓冲
-IBUFG u_ibufg_tx_clk (
-    .I(PL_SFP_CLK),
-    .O(clk_phy_tx)
-);
+// IBUFG u_ibufg_tx_clk (
+    // .I(PL_SFP_CLK),
+    // .O(clk_phy_tx)
+// );
+assign clk_phy_tx = clk_user;
 
 // 接收恢复时钟差分全局缓冲 (CDC-2 修复: 恢复时钟必须走全局缓冲)
-IBUFGDS u_ibufgds_rx_clk (
-    .I(PL_SFP_RBC0),
-    .IB(PL_SFP_RBC1),
-    .O(clk_phy_rx)
-);
+// IBUFGDS u_ibufgds_rx_clk (
+    // .I(PL_SFP_RBC0),
+    // .IB(PL_SFP_RBC1),
+    // .O(clk_phy_rx)
+// );
+
+
+   BUFG u_ibufgds_rx_clk (
+      .O(clk_phy_rx), // 1-bit output: Clock output
+      .I(PL_SFP_RBC0)  // 1-bit input: Clock input
+   );
 
 
 // ====================== PHY 侧复位同步（异步复位同步释放） ======================

@@ -1,0 +1,61 @@
+m255
+K4
+z2
+13
+!s112 1.1
+!i10d 8192
+!i10e 25
+!i10f 100
+cModel Technology
+Z0 dF:/wc.prj/pulse_mfpga/src/DXH_AI/test_data_gen/sim
+T_opt
+!s110 1786713521
+VYL?WjnDJYIPSKOhe@Q7>e3
+04 16 4 work tb_test_data_gen fast 0
+=1-54e1ad008802-6a7f15b0-30a-188c
+o-quiet -auto_acc_if_foreign -work work -L work
+Z1 tCvgOpt 0
+n@_opt
+OL;O;10.6d;65
+vtb_test_data_gen
+!s110 1786713520
+!i10b 1
+!s100 SD_MkM5U>UjgJk=dcY5F51
+IFNQW2RWOfQ=M5[g=m0gE@0
+Z2 VDg1SIo80bB@j0V0VzS_@n1
+R0
+w1786713507
+8../sim/tb_test_data_gen.v
+F../sim/tb_test_data_gen.v
+L0 26
+Z3 OL;L;10.6d;65
+r1
+!s85 0
+31
+!s108 1786713520.000000
+!s107 ../sim/tb_test_data_gen.v|
+!s90 -work|work|+acc|../sim/tb_test_data_gen.v|
+!i113 0
+Z4 o-work work +acc -L mtiAvm -L mtiRnm -L mtiOvm -L mtiUvm -L mtiUPF -L infact
+R1
+vtest_data_gen
+!s110 1786713519
+!i10b 1
+!s100 gbB@_;7WeC8T02oohngnT3
+IFB3IRRCPlBGgiH3gV9BW<1
+R2
+R0
+w1786713495
+8../rtl/test_data_gen.v
+F../rtl/test_data_gen.v
+L0 30
+R3
+r1
+!s85 0
+31
+!s108 1786713519.000000
+!s107 ../rtl/test_data_gen.v|
+!s90 -work|work|+acc|../rtl/test_data_gen.v|
+!i113 0
+R4
+R1
