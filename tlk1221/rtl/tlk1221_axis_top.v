@@ -62,7 +62,7 @@ module tlk1221_axis_top
     input  wire                         PL_SFP_RBC0,
     input  wire                         PL_SFP_RBC1,
     input  wire                         PL_SFP_SYNC,
-    input  wire                         PL_SFP_CLK,
+    output wire                         PL_SFP_CLK,
     
     // 控制输出
     output wire                         PL_SFP_SYNCEN,
